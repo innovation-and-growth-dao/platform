@@ -1,0 +1,1 @@
+ALTER TABLE "expert" ADD COLUMN "left_at" TIMESTAMPTZ(6);

@@ -1,0 +1,4238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRep DAO — Platform Design v2</title>
+<style>
+:root {
+  --fg: #1f2328;
+  --bg: #ffffff;
+  --muted: #57606a;
+  --border: #d0d7de;
+  --code-bg: #f6f8fa;
+  --link: #0969da;
+}
+* { box-sizing: border-box; }
+html { font-size: 15px; }
+body {
+  margin: 0 auto;
+  max-width: 980px;
+  padding: 32px 48px 64px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+               Helvetica, Arial, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.55;
+}
+h1, h2, h3, h4 { font-weight: 600; margin-top: 1.6em; margin-bottom: 0.5em; line-height: 1.25; }
+h1 { font-size: 2em; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; margin-top: 0; }
+h2 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
+h3 { font-size: 1.2em; }
+h4 { font-size: 1.05em; }
+p, ul, ol, blockquote, table { margin: 0.4em 0 1em; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+}
+pre {
+  background: var(--code-bg);
+  padding: 14px 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.85em;
+  line-height: 1.45;
+}
+pre code { background: transparent; padding: 0; font-size: 1em; }
+table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; font-size: 0.92em; }
+table th, table td { border: 1px solid var(--border); padding: 6px 12px; text-align: left; vertical-align: top; }
+table th { background: var(--code-bg); font-weight: 600; }
+table tr:nth-child(2n) td { background: #fafbfc; }
+blockquote { margin: 0.5em 0; padding: 0.4em 1em; border-left: 4px solid var(--border); color: var(--muted); background: #fafbfc; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+ul, ol { padding-left: 1.6em; }
+li { margin: 0.15em 0; }
+svg { display: block; margin: 16px auto; max-width: 100%; height: auto; }
+img { max-width: 100%; }
+/* Print-friendly */
+@media print {
+  body { max-width: none; padding: 12px 20px; font-size: 10.5pt; }
+  h1 { font-size: 20pt; }
+  h2 { font-size: 14.5pt; }
+  h3 { font-size: 12pt; }
+  h4 { font-size: 11pt; }
+  table { font-size: 9pt; }
+  pre, table, svg, blockquote { page-break-inside: avoid; }
+  h2, h3, h4 { page-break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<h1 id="drep-dao--platform-design-v2">DRep DAO — Platform Design v2</h1>
+<hr />
+<h2 id="table-of-contents">Table of Contents</h2>
+<p><strong>Part I — Functional Design</strong></p>
+<ol type="1">
+<li><a href="#1-system-architecture">System Architecture</a></li>
+<li><a href="#2-roles">Roles</a></li>
+<li><a href="#3-proposal-types-and-lifecycles">Proposal Types and
+Lifecycles</a></li>
+<li><a href="#4-voting-power">Voting Power</a></li>
+<li><a href="#5-rounds-and-categories">Rounds and Categories</a></li>
+<li><a href="#6-round-preparation-stage">Round Preparation
+Stage</a></li>
+<li><a href="#7-filtering-stage">Filtering Stage</a></li>
+<li><a href="#8-debate-and-vote-stage">Debate and Vote Stage</a></li>
+<li><a href="#9-voting-result-stage-and-quick-polls">Voting Result Stage
+and Quick Polls</a></li>
+<li><a href="#10-internal-proposals-threshold-voting">Internal Proposals
+(Threshold Voting)</a></li>
+<li><a href="#11-funding-stage--checking-milestones">Funding Stage —
+Checking Milestones</a></li>
+<li><a href="#12-reward-system">Reward System</a></li>
+<li><a href="#13-merit-points-system">Merit Points System</a></li>
+<li><a href="#14-drep-admission-and-removal">DRep Admission and
+Removal</a></li>
+<li><a href="#15-dao-treasury">DAO Treasury</a></li>
+<li><a href="#16-pledge-skin-in-the-game">Pledge (Skin in the
+Game)</a></li>
+<li><a href="#17-dao-board-interim">DAO Board (Interim)</a></li>
+<li><a href="#18-submission-form">Submission Form</a></li>
+<li><a href="#19-communication-and-notifications">Communication and
+Notifications</a></li>
+<li><a href="#20-configurable-platform-parameters">Configurable Platform
+Parameters</a></li>
+</ol>
+<p><strong>Part II — Technical Architecture</strong></p>
+<ol start="21" type="1">
+<li><a href="#21-technology-stack">Technology Stack</a></li>
+<li><a href="#22-cardano-integration">Cardano Integration</a></li>
+<li><a href="#23-on-chain-anchoring">On-Chain Anchoring</a></li>
+<li><a href="#24-database-schema">Database Schema</a></li>
+<li><a href="#25-api-surface">API Surface</a></li>
+<li><a href="#26-background-jobs-and-scheduler">Background Jobs and
+Scheduler</a></li>
+</ol>
+<p><strong>Part III — Delivery</strong></p>
+<ol start="27" type="1">
+<li><a href="#27-mvp-scope-cut-and-phases">MVP Scope Cut and
+Phases</a></li>
+<li><a href="#28-open-questions-and-todos">Open Questions and
+TODOs</a></li>
+</ol>
+<hr />
+<h2 id="1-system-architecture">1. System Architecture</h2>
+<p>The DRep DAO platform is a self-hosted web application that
+integrates directly with the Cardano network. There is no off-platform
+contract layer.</p>
+<h3 id="high-level-component-diagram">High-level component diagram</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" font-family="Arial, sans-serif" font-size="13">
+  <defs>
+    <marker id="ah" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <!-- Users -->
+  <rect x="20" y="20" width="120" height="50" rx="6" fill="#fef3c7" stroke="#333"/>
+  <text x="80" y="42" text-anchor="middle">DReps / Submitters /</text>
+  <text x="80" y="58" text-anchor="middle">Board / Viewers</text>
+  <!-- Frontend -->
+  <rect x="200" y="20" width="140" height="50" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="270" y="42" text-anchor="middle">Web Frontend</text>
+  <text x="270" y="58" text-anchor="middle">(React + CIP-30)</text>
+  <!-- Backend -->
+  <rect x="200" y="160" width="140" height="60" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="270" y="184" text-anchor="middle">DAO Backend</text>
+  <text x="270" y="200" text-anchor="middle">(REST + jobs)</text>
+  <text x="270" y="214" text-anchor="middle">Source of truth</text>
+  <!-- DB -->
+  <ellipse cx="270" cy="320" rx="80" ry="30" fill="#fce7f3" stroke="#333"/>
+  <text x="270" y="318" text-anchor="middle">PostgreSQL</text>
+  <text x="270" y="334" text-anchor="middle">(operational data)</text>
+  <!-- Notifications -->
+  <rect x="20" y="160" width="140" height="60" rx="6" fill="#fef3c7" stroke="#333"/>
+  <text x="90" y="184" text-anchor="middle">Notifier</text>
+  <text x="90" y="200" text-anchor="middle">In-app · Email</text>
+  <text x="90" y="214" text-anchor="middle">Telegram bot</text>
+  <!-- Cardano data provider -->
+  <rect x="400" y="160" width="160" height="60" rx="6" fill="#d1fae5" stroke="#333"/>
+  <text x="480" y="184" text-anchor="middle">Cardano Indexer</text>
+  <text x="480" y="200" text-anchor="middle">(Blockfrost / Koios)</text>
+  <text x="480" y="214" text-anchor="middle">Read-only queries</text>
+  <!-- Cardano network -->
+  <rect x="600" y="20" width="140" height="60" rx="6" fill="#d1fae5" stroke="#333"/>
+  <text x="670" y="44" text-anchor="middle">Cardano Network</text>
+  <text x="670" y="60" text-anchor="middle">(Preview → Mainnet)</text>
+  <!-- DAO multisig -->
+  <rect x="600" y="160" width="140" height="60" rx="6" fill="#d1fae5" stroke="#333"/>
+  <text x="670" y="184" text-anchor="middle">DAO Multisig</text>
+  <text x="670" y="200" text-anchor="middle">3-of-5 Wallet</text>
+  <text x="670" y="214" text-anchor="middle">(operated by Board)</text>
+  <!-- Anchoring service -->
+  <rect x="400" y="300" width="160" height="60" rx="6" fill="#fde68a" stroke="#333"/>
+  <text x="480" y="324" text-anchor="middle">Anchor Service</text>
+  <text x="480" y="340" text-anchor="middle">(hash + sign + submit</text>
+  <text x="480" y="354" text-anchor="middle">metadata TX)</text>
+  <!-- Intersect (external) -->
+  <rect x="600" y="300" width="140" height="60" rx="6" fill="#e5e7eb" stroke="#333" stroke-dasharray="4 3"/>
+  <text x="670" y="324" text-anchor="middle">Intersect</text>
+  <text x="670" y="340" text-anchor="middle">(off-platform,</text>
+  <text x="670" y="354" text-anchor="middle">TW recipient setup)</text>
+  <!-- Arrows -->
+  <line x1="140" y1="45" x2="195" y2="45" stroke="#333" marker-end="url(#ah)"/>
+  <line x1="270" y1="75" x2="270" y2="155" stroke="#333" marker-end="url(#ah)" stroke-dasharray="4 3"/>
+  <line x1="270" y1="155" x2="270" y2="75" stroke="#333" marker-end="url(#ah)" stroke-dasharray="4 3"/>
+  <line x1="270" y1="225" x2="270" y2="285" stroke="#333" marker-end="url(#ah)"/>
+  <line x1="160" y1="190" x2="195" y2="190" stroke="#333" marker-end="url(#ah)"/>
+  <line x1="340" y1="190" x2="395" y2="190" stroke="#333" marker-end="url(#ah)"/>
+  <line x1="480" y1="155" x2="480" y2="85" stroke="#333" stroke-dasharray="4 3"/>
+  <line x1="480" y1="85" x2="595" y2="50" stroke="#333" marker-end="url(#ah)"/>
+  <line x1="480" y1="295" x2="480" y2="225" stroke="#333" marker-end="url(#ah)"/>
+  <line x1="350" y1="320" x2="395" y2="320" stroke="#333" marker-end="url(#ah)"/>
+  <line x1="560" y1="330" x2="595" y2="200" stroke="#333" marker-end="url(#ah)"/>
+  <line x1="670" y1="295" x2="670" y2="225" stroke="#333" marker-end="url(#ah)" stroke-dasharray="4 3"/>
+</svg>
+
+<h3 id="component-responsibilities">Component responsibilities</h3>
+<p><strong>Web Frontend (browser app)</strong></p>
+<ul>
+<li>Renders proposals, votes, dashboards, forms</li>
+<li>Wallet connection via CIP-30 (sign-message login)</li>
+<li>Calls backend REST API; does not talk to Cardano directly except for
+wallet signing</li>
+</ul>
+<p><strong>DAO Backend</strong> <em>(source of truth)</em></p>
+<ul>
+<li>All business logic: proposal lifecycle, voting tally, merit points,
+reward calculations, reviewer assignment</li>
+<li>REST API for frontend</li>
+<li>Job scheduler for time-based transitions (stage end, notification
+dispatch)</li>
+<li>Issues signing requests to the board multisig for treasury
+actions</li>
+</ul>
+<p><strong>PostgreSQL Database</strong></p>
+<ul>
+<li>All operational data: proposals, votes, comments, users, rewards,
+configuration</li>
+<li>See section 24 for schema</li>
+</ul>
+<p><strong>Notifier</strong></p>
+<ul>
+<li>Three channels: in-app notifications (delivered when user is logged
+in), email (SendGrid or equivalent), Telegram bot</li>
+<li>Templated, throttled, idempotent</li>
+</ul>
+<p><strong>Cardano Indexer</strong></p>
+<ul>
+<li>Blockfrost on mainnet (paid plan) or Koios (free, community-run) as
+backup</li>
+<li>Used for: verifying pledge transactions, reading DRep on-chain
+voting power, reading delegator counts, fetching block hashes for
+randomness</li>
+<li>All access is <strong>read-only</strong>; no transaction submission
+through indexer</li>
+</ul>
+<p><strong>DAO Multisig (3-of-5)</strong></p>
+<ul>
+<li>Holds: round operational budget, submission fees, pledges</li>
+<li>Disburses: rewards, project funding, pledge returns</li>
+<li>Board members run the wallet client (e.g., Eternl) and co-sign
+transactions prepared by the backend</li>
+</ul>
+<p><strong>Anchor Service</strong></p>
+<ul>
+<li>Periodically computes Merkle hashes of designated state (proposals,
+vote tallies, voting power snapshots, merit ledger)</li>
+<li>Builds a Cardano metadata transaction containing the hash + a state
+identifier</li>
+<li>Submits via a board signer's hot key (operational, not the multisig
+— see section 23)</li>
+</ul>
+<p><strong>Intersect</strong> <em>(external, off-platform)</em></p>
+<ul>
+<li>Sends the per-round Treasury Withdrawal (project funding +
+operations) to the DAO Multisig address</li>
+<li>Not integrated programmatically; this is a manual off-chain
+coordination step</li>
+</ul>
+<h3 id="authoritative-data-flows">Authoritative data flows</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Action</th>
+<th>Origin of truth</th>
+<th>On-chain trace</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Submit proposal</td>
+<td>DB</td>
+<td>TX hash of submission fee payment</td>
+</tr>
+<tr class="even">
+<td>Filtering vote cast</td>
+<td>DB</td>
+<td>Periodic anchor (hash of day's votes)</td>
+</tr>
+<tr class="odd">
+<td>Debate &amp; Vote tally finalized</td>
+<td>DB</td>
+<td>One-shot anchor at stage end</td>
+</tr>
+<tr class="even">
+<td>Voting power snapshot</td>
+<td>DB (computed from chain data)</td>
+<td>Anchor at snapshot time</td>
+</tr>
+<tr class="odd">
+<td>Merit point change</td>
+<td>DB ledger</td>
+<td>Daily anchor of merit deltas</td>
+</tr>
+<tr class="even">
+<td>Pledge paid in</td>
+<td>Cardano</td>
+<td>TX confirmed by indexer, stored in DB</td>
+</tr>
+<tr class="odd">
+<td>Project funding paid out</td>
+<td>Cardano</td>
+<td>Multisig TX signed by board</td>
+</tr>
+<tr class="even">
+<td>Reward paid out</td>
+<td>Cardano</td>
+<td>Multisig TX signed by board</td>
+</tr>
+</tbody>
+</table>
+<p>A DRep can independently verify any of these by querying the
+platform's read-only verification API, which returns the data and its
+on-chain anchor reference.</p>
+<hr />
+<h2 id="2-roles">2. Roles</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Role</th>
+<th>Capabilities</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Viewer</strong></td>
+<td>Browse all proposals, votes, results, member lists. No login
+required for read-only; wallet login for personalized views.</td>
+</tr>
+<tr class="even">
+<td><strong>Submitter</strong></td>
+<td>Everything a Viewer can do + draft, submit, edit (during permitted
+windows), pay submission fee, send pledge, submit Proof of Achievement.
+Identified by wallet stake key.</td>
+</tr>
+<tr class="odd">
+<td><strong>DRep</strong></td>
+<td>Everything above + opt into filtering pool, opt into milestone
+review pool, vote in Debate &amp; Vote stage, signal avoid period,
+provide rationale, submit internal proposals. Identified by on-chain
+DRep ID.</td>
+</tr>
+<tr class="even">
+<td><strong>DRep — Filter Reviewer</strong></td>
+<td>A DRep currently assigned to filter a specific proposal in the
+current round. Must provide feedback + vote within 1-person-1-vote
+system.</td>
+</tr>
+<tr class="odd">
+<td><strong>DRep — Milestone Reviewer</strong></td>
+<td>A DRep (or Expert) assigned to check milestones for a specific
+funded project.</td>
+</tr>
+<tr class="even">
+<td><strong>Expert</strong></td>
+<td>A non-DRep with subject-matter knowledge, eligible only for
+milestone review. Approved per round by the board.</td>
+</tr>
+<tr class="odd">
+<td><strong>DAO Board Member</strong></td>
+<td>A DRep with elevated capabilities: configure rounds, confirm
+assignments, distribute rewards (multisig), admit/remove DReps, prolong
+periods, launch quick polls. 5 members, 3-of-5 multisig for treasury
+actions.</td>
+</tr>
+</tbody>
+</table>
+<p>A user can hold multiple roles simultaneously (e.g., a board member
+can also act as a regular DRep voter in the Debate &amp; Vote stage if
+they explicitly opt in).</p>
+<h3 id="login">Login</h3>
+<ul>
+<li>All authenticated actions use a Cardano wallet (Eternl, Lace, Yoroi,
+Nami)</li>
+<li>Login flow: CIP-30 <code>signData</code> with a server-issued nonce;
+backend verifies signature against the stake key</li>
+<li>A <code>User</code> record is auto-created on first login, keyed by
+stake key hash</li>
+<li>DRep status is granted only after admission (see section 14)</li>
+</ul>
+<hr />
+<h2 id="3-proposal-types-and-lifecycles">3. Proposal Types and
+Lifecycles</h2>
+<h3 id="31-funding-proposals">3.1 Funding Proposals</h3>
+<p>Submitted by external teams (or DReps after disclosure). Pass through
+three sequential stages: <strong>Filtering → Debate &amp; Vote → Funding
+(Milestones)</strong>. Two-phase approval inside Filtering; single-phase
+vote inside Debate &amp; Vote; multi-milestone funding release.</p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 240" font-family="Arial, sans-serif" font-size="13">
+  <defs>
+    <marker id="a1" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="380" y="20" text-anchor="middle" font-weight="bold">Funding Proposal Lifecycle</text>
+  <rect x="20" y="80" width="100" height="50" rx="6" fill="#fff" stroke="#333"/>
+  <text x="70" y="102" text-anchor="middle">Proposal</text>
+  <text x="70" y="118" text-anchor="middle">Submission</text>
+  <rect x="160" y="80" width="100" height="50" rx="6" fill="#bfdbfe" stroke="#333"/>
+  <text x="210" y="102" text-anchor="middle">Filtering</text>
+  <text x="210" y="118" text-anchor="middle">(1p=1v)</text>
+  <rect x="300" y="40" width="100" height="40" rx="6" fill="#d1fae5" stroke="#333"/>
+  <text x="350" y="65" text-anchor="middle">Accepted</text>
+  <rect x="300" y="150" width="100" height="40" rx="6" fill="#fecaca" stroke="#333"/>
+  <text x="350" y="175" text-anchor="middle">Rejected</text>
+  <rect x="430" y="80" width="110" height="50" rx="6" fill="#bfdbfe" stroke="#333"/>
+  <text x="485" y="102" text-anchor="middle">Debate &amp; Vote</text>
+  <text x="485" y="118" text-anchor="middle">(balanced)</text>
+  <rect x="580" y="40" width="100" height="40" rx="6" fill="#d1fae5" stroke="#333"/>
+  <text x="630" y="65" text-anchor="middle">Approved</text>
+  <text x="630" y="78" text-anchor="middle" font-size="10">(Funded)</text>
+  <rect x="580" y="150" width="100" height="40" rx="6" fill="#fecaca" stroke="#333"/>
+  <text x="630" y="175" text-anchor="middle">Rejected</text>
+  <rect x="690" y="40" width="60" height="40" rx="6" fill="#bbf7d0" stroke="#333"/>
+  <text x="720" y="65" text-anchor="middle">Funding</text>
+  <line x1="120" y1="105" x2="155" y2="105" stroke="#333" marker-end="url(#a1)"/>
+  <line x1="260" y1="100" x2="295" y2="80" stroke="#333" marker-end="url(#a1)"/>
+  <line x1="260" y1="115" x2="295" y2="160" stroke="#333" marker-end="url(#a1)"/>
+  <line x1="400" y1="60" x2="430" y2="100" stroke="#333" marker-end="url(#a1)"/>
+  <line x1="540" y1="100" x2="575" y2="60" stroke="#333" marker-end="url(#a1)"/>
+  <line x1="540" y1="110" x2="575" y2="160" stroke="#333" marker-end="url(#a1)"/>
+  <line x1="680" y1="60" x2="690" y2="60" stroke="#333" marker-end="url(#a1)"/>
+</svg>
+
+<h3 id="32-internal-proposals">3.2 Internal Proposals</h3>
+<p>Submitted by DReps or board members. Single Vote stage. No filtering.
+No edits during voting (only comments). May be submitted at any time,
+independently of rounds.</p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 200" font-family="Arial, sans-serif" font-size="13">
+  <defs>
+    <marker id="a2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="350" y="20" text-anchor="middle" font-weight="bold">Internal Proposal Lifecycle</text>
+  <rect x="20" y="80" width="100" height="50" rx="6" fill="#fff" stroke="#333"/>
+  <text x="70" y="108" text-anchor="middle">Submission</text>
+  <rect x="200" y="80" width="160" height="50" rx="6" fill="#bfdbfe" stroke="#333"/>
+  <text x="280" y="102" text-anchor="middle">Vote Process</text>
+  <text x="280" y="118" text-anchor="middle" font-size="11">(no edits during voting)</text>
+  <rect x="440" y="40" width="120" height="40" rx="6" fill="#d1fae5" stroke="#333"/>
+  <text x="500" y="65" text-anchor="middle">Approved</text>
+  <rect x="440" y="150" width="120" height="40" rx="6" fill="#fecaca" stroke="#333"/>
+  <text x="500" y="175" text-anchor="middle">Rejected</text>
+  <line x1="120" y1="105" x2="195" y2="105" stroke="#333" marker-end="url(#a2)"/>
+  <line x1="360" y1="100" x2="435" y2="60" stroke="#333" marker-end="url(#a2)"/>
+  <line x1="360" y1="115" x2="435" y2="160" stroke="#333" marker-end="url(#a2)"/>
+</svg>
+
+<h3 id="33-statuses">3.3 Statuses</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Status</th>
+<th>Funding</th>
+<th>Internal</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>DRAFT</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>Saved by submitter, not yet submitted. Visible only to
+submitter.</td>
+</tr>
+<tr class="even">
+<td><strong>PENDING</strong></td>
+<td>✓</td>
+<td>—</td>
+<td>Submitter or board action required (fee check, pledge sending)</td>
+</tr>
+<tr class="odd">
+<td><strong>ACTIVE</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>Open for voting and/or editing during the current stage</td>
+</tr>
+<tr class="even">
+<td><strong>APPROVED</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>Voting concluded positively. For funding: proceeds to milestone
+funding.</td>
+</tr>
+<tr class="odd">
+<td><strong>REJECTED</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>Voting concluded negatively, or threshold not reached, or
+expired</td>
+</tr>
+<tr class="even">
+<td><strong>COMPLETE</strong></td>
+<td>✓</td>
+<td>—</td>
+<td>All milestones delivered</td>
+</tr>
+<tr class="odd">
+<td><strong>FAILED</strong></td>
+<td>✓</td>
+<td>—</td>
+<td>Project terminated before all milestones delivered</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Status transition graph for funding proposals:</strong></p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 360" font-family="Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="a3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="410" y="22" text-anchor="middle" font-weight="bold">Funding Proposal — Status Transitions Across Stages</text>
+  <!-- Filtering stage band -->
+  <rect x="20" y="290" width="240" height="20" fill="#e0f2fe" stroke="#0284c7"/>
+  <text x="140" y="304" text-anchor="middle" font-size="11">Filtering stage</text>
+  <rect x="270" y="290" width="200" height="20" fill="#e0e7ff" stroke="#4338ca"/>
+  <text x="370" y="304" text-anchor="middle" font-size="11">Debate &amp; Vote stage</text>
+  <rect x="480" y="290" width="320" height="20" fill="#dcfce7" stroke="#15803d"/>
+  <text x="640" y="304" text-anchor="middle" font-size="11">Funding (Milestones) stage</text>
+  <!-- Boxes -->
+  <rect x="30" y="120" width="80" height="36" rx="5" fill="#f3f4f6" stroke="#333"/>
+  <text x="70" y="142" text-anchor="middle">DRAFT</text>
+  <rect x="130" y="120" width="80" height="36" rx="5" fill="#fef9c3" stroke="#333"/>
+  <text x="170" y="142" text-anchor="middle">PENDING</text>
+  <text x="170" y="100" text-anchor="middle" font-size="10">fee paid?</text>
+  <rect x="230" y="120" width="80" height="36" rx="5" fill="#bfdbfe" stroke="#333"/>
+  <text x="270" y="142" text-anchor="middle">ACTIVE</text>
+  <rect x="330" y="120" width="100" height="36" rx="5" fill="#bfdbfe" stroke="#333"/>
+  <text x="380" y="142" text-anchor="middle">ACTIVE (D&amp;V)</text>
+  <rect x="450" y="60" width="100" height="36" rx="5" fill="#fef9c3" stroke="#333"/>
+  <text x="500" y="82" text-anchor="middle">PENDING</text>
+  <text x="500" y="50" text-anchor="middle" font-size="10">pledge sent?</text>
+  <rect x="580" y="60" width="100" height="36" rx="5" fill="#dcfce7" stroke="#333"/>
+  <text x="630" y="82" text-anchor="middle">APPROVED</text>
+  <rect x="700" y="60" width="90" height="36" rx="5" fill="#86efac" stroke="#333"/>
+  <text x="745" y="82" text-anchor="middle">COMPLETE</text>
+  <rect x="700" y="200" width="90" height="36" rx="5" fill="#fca5a5" stroke="#333"/>
+  <text x="745" y="222" text-anchor="middle">FAILED</text>
+  <rect x="320" y="200" width="100" height="36" rx="5" fill="#fecaca" stroke="#333"/>
+  <text x="370" y="222" text-anchor="middle">REJECTED (D&amp;V)</text>
+  <rect x="200" y="200" width="100" height="36" rx="5" fill="#fecaca" stroke="#333"/>
+  <text x="250" y="222" text-anchor="middle">REJECTED (filter)</text>
+  <!-- Arrows -->
+  <line x1="110" y1="138" x2="128" y2="138" stroke="#333" marker-end="url(#a3)"/>
+  <line x1="210" y1="138" x2="228" y2="138" stroke="#333" marker-end="url(#a3)"/>
+  <line x1="310" y1="138" x2="328" y2="138" stroke="#333" marker-end="url(#a3)"/>
+  <line x1="270" y1="156" x2="270" y2="198" stroke="#333" marker-end="url(#a3)"/>
+  <line x1="380" y1="156" x2="380" y2="198" stroke="#333" marker-end="url(#a3)"/>
+  <line x1="430" y1="138" x2="448" y2="100" stroke="#333" marker-end="url(#a3)"/>
+  <line x1="430" y1="138" x2="578" y2="80" stroke="#333" marker-end="url(#a3)" stroke-dasharray="4 3"/>
+  <line x1="550" y1="80" x2="578" y2="80" stroke="#333" marker-end="url(#a3)"/>
+  <line x1="680" y1="80" x2="698" y2="80" stroke="#333" marker-end="url(#a3)"/>
+  <line x1="630" y1="96" x2="745" y2="198" stroke="#333" marker-end="url(#a3)" stroke-dasharray="3 3"/>
+  <text x="700" y="160" font-size="10" fill="#666">terminated</text>
+</svg>
+
+<p>Notes on <code>PENDING</code>:</p>
+<ul>
+<li><strong>After submission:</strong> proposal is <code>PENDING</code>
+until backend confirms the submission-fee TX hash on-chain, then
+transitions to <code>ACTIVE</code>.</li>
+<li><strong>After approval (before milestone funding):</strong> if a
+pledge is required, proposal is <code>PENDING</code> until the board
+confirms the pledge has been received, then transitions to
+<code>APPROVED</code> / milestone funding begins.</li>
+</ul>
+<h3 id="34-proposal-structure">3.4 Proposal Structure</h3>
+<p>Both funding and internal proposals share a common header;
+type-specific fields are added on top.</p>
+<p><strong>Common fields (all proposals):</strong></p>
+<ul>
+<li><code>id</code> (UUID)</li>
+<li><code>type</code> — <code>FUNDING</code> or
+<code>INTERNAL</code></li>
+<li><code>status</code> — see table above</li>
+<li><code>stage</code> — <code>FILTERING</code> /
+<code>DEBATE_VOTE</code> / <code>FUNDING</code> (funding only) /
+<code>VOTING</code> (internal only)</li>
+<li><code>submitter_user_id</code>, <code>submitter_drep_id</code> (if
+applicable)</li>
+<li><code>title</code>, <code>content</code> (markdown)</li>
+<li><code>category_id</code> (FK)</li>
+<li><code>submitted_at</code>, <code>voting_start_at</code>,
+<code>voting_end_at</code>, <code>result_finalized_at</code></li>
+<li><code>voting_type</code> — <code>ONE_PERSON_ONE_VOTE</code> or
+<code>BALANCED</code></li>
+<li><code>approval_threshold_pct</code> — 51, 67, 75, … (set by platform
+per proposal kind)</li>
+<li><code>version</code> (incremented on each edit; older versions
+retained for audit)</li>
+<li><code>round_id</code> (funding only; nullable for internal)</li>
+</ul>
+<p><strong>Funding-specific fields:</strong></p>
+<ul>
+<li><code>requested_amount_ada</code></li>
+<li><code>is_commercial</code> (boolean — determines submission-fee
+tier)</li>
+<li><code>submission_fee_ada</code> (computed at submission time)</li>
+<li><code>submission_fee_tx_hash</code> (provided by submitter)</li>
+<li><code>pledge_amount_ada</code> (0 if no pledge required)</li>
+<li><code>pledge_return_method</code> — <code>LAST_MILESTONE</code> or
+<code>PER_MILESTONE</code></li>
+<li><code>pledge_tx_hash</code> (provided by submitter when sending
+pledge)</li>
+<li><code>milestones[]</code> — array of
+<code>{ idx, description, amount_ada, deadline }</code></li>
+<li><code>team_info</code>, <code>cost_breakdown</code>,
+<code>revenue_sharing</code></li>
+<li><code>category_type</code> — <code>GRANT</code> or
+<code>RFP</code></li>
+</ul>
+<p><strong>Internal-specific fields:</strong></p>
+<ul>
+<li><code>internal_type</code> — <code>INSTRUCTIVE</code>,
+<code>INFORMATIVE</code>, <code>POLL</code></li>
+<li><code>voters_scope</code> — <code>DREPS_ONLY</code>,
+<code>BOARD_ONLY</code>, <code>BOTH</code></li>
+<li><code>actors[]</code> (for <code>INSTRUCTIVE</code>) — who is
+supposed to act</li>
+<li><code>delivery_date</code> (for <code>INSTRUCTIVE</code>)</li>
+<li><code>poll_options[]</code> (for <code>POLL</code>)</li>
+<li><code>threshold_kind</code> — <code>DEFAULT</code> or
+<code>IMPORTANT</code> (selects which configurable threshold to
+apply)</li>
+</ul>
+<h3 id="35-proposal-queues">3.5 Proposal Queues</h3>
+<p>The platform exposes browsable queues per round and a unified
+internal queue.</p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 320" font-family="Arial, sans-serif" font-size="11">
+  <text x="440" y="22" text-anchor="middle" font-weight="bold">Proposal Queues</text>
+  <!-- Old round -->
+  <rect x="20" y="50" width="130" height="240" rx="8" fill="#f3f4f6" stroke="#333"/>
+  <text x="85" y="70" text-anchor="middle" font-weight="bold">OLD ROUND(S)</text>
+  <text x="85" y="84" text-anchor="middle" font-size="10">Round 1 (closed)</text>
+  <rect x="35" y="100" width="100" height="28" rx="4" fill="#bbf7d0" stroke="#333"/>
+  <text x="85" y="118" text-anchor="middle">Approved</text>
+  <rect x="35" y="135" width="100" height="28" rx="4" fill="#fca5a5" stroke="#333"/>
+  <text x="85" y="153" text-anchor="middle">Rejected</text>
+  <rect x="35" y="170" width="100" height="28" rx="4" fill="#fde68a" stroke="#333"/>
+  <text x="85" y="188" text-anchor="middle">Failed</text>
+  <!-- Active round drafts -->
+  <rect x="170" y="50" width="130" height="240" rx="8" fill="#fffbeb" stroke="#333"/>
+  <text x="235" y="70" text-anchor="middle" font-weight="bold">ACTIVE: DRAFTS</text>
+  <text x="235" y="84" text-anchor="middle" font-size="10">Round 2</text>
+  <rect x="185" y="100" width="100" height="28" rx="4" fill="#f3f4f6" stroke="#333"/>
+  <text x="235" y="118" text-anchor="middle">Draft</text>
+  <rect x="185" y="135" width="100" height="28" rx="4" fill="#f3f4f6" stroke="#333"/>
+  <text x="235" y="153" text-anchor="middle">Draft</text>
+  <!-- Active pending -->
+  <rect x="320" y="50" width="130" height="240" rx="8" fill="#fef9c3" stroke="#333"/>
+  <text x="385" y="70" text-anchor="middle" font-weight="bold">ACTIVE: PENDING</text>
+  <text x="385" y="84" text-anchor="middle" font-size="10">Round 2</text>
+  <rect x="335" y="100" width="100" height="28" rx="4" fill="#fef9c3" stroke="#333"/>
+  <text x="385" y="118" text-anchor="middle">Pending fee</text>
+  <rect x="335" y="135" width="100" height="28" rx="4" fill="#fef9c3" stroke="#333"/>
+  <text x="385" y="153" text-anchor="middle">Pending pledge</text>
+  <!-- Active filtering/D&V -->
+  <rect x="470" y="50" width="130" height="240" rx="8" fill="#dbeafe" stroke="#333"/>
+  <text x="535" y="70" text-anchor="middle" font-weight="bold">ACTIVE</text>
+  <text x="535" y="84" text-anchor="middle" font-size="10">In filtering / D&amp;V</text>
+  <rect x="485" y="100" width="100" height="28" rx="4" fill="#bfdbfe" stroke="#333"/>
+  <text x="535" y="118" text-anchor="middle">Active (filter)</text>
+  <rect x="485" y="135" width="100" height="28" rx="4" fill="#bfdbfe" stroke="#333"/>
+  <text x="535" y="153" text-anchor="middle">Active (D&amp;V)</text>
+  <!-- Approved (funding) -->
+  <rect x="620" y="50" width="130" height="240" rx="8" fill="#dcfce7" stroke="#333"/>
+  <text x="685" y="70" text-anchor="middle" font-weight="bold">FUNDED</text>
+  <text x="685" y="84" text-anchor="middle" font-size="10">Milestones ongoing</text>
+  <rect x="635" y="100" width="100" height="28" rx="4" fill="#bbf7d0" stroke="#333"/>
+  <text x="685" y="118" text-anchor="middle">Approved</text>
+  <rect x="635" y="135" width="100" height="28" rx="4" fill="#bbf7d0" stroke="#333"/>
+  <text x="685" y="153" text-anchor="middle">Approved</text>
+  <!-- Internals -->
+  <rect x="770" y="50" width="100" height="240" rx="8" fill="#ede9fe" stroke="#333"/>
+  <text x="820" y="70" text-anchor="middle" font-weight="bold">INTERNALS</text>
+  <text x="820" y="84" text-anchor="middle" font-size="10">all-time</text>
+  <rect x="780" y="100" width="80" height="28" rx="4" fill="#c4b5fd" stroke="#333"/>
+  <text x="820" y="118" text-anchor="middle">Active</text>
+  <rect x="780" y="135" width="80" height="28" rx="4" fill="#bbf7d0" stroke="#333"/>
+  <text x="820" y="153" text-anchor="middle">Approved</text>
+  <rect x="780" y="170" width="80" height="28" rx="4" fill="#fca5a5" stroke="#333"/>
+  <text x="820" y="188" text-anchor="middle">Rejected</text>
+</svg>
+
+<hr />
+<h2 id="4-voting-power">4. Voting Power</h2>
+<h3 id="41-two-systems-used-at-different-stages">4.1 Two systems used at
+different stages</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Stage</th>
+<th>System</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Filtering (per-proposal review by 5 DReps)</td>
+<td><strong>1-person = 1 vote</strong></td>
+<td>Small jury; balanced power is meaningless with 5 voters</td>
+</tr>
+<tr class="even">
+<td>Milestone checking (per-proposal review by ~3 DReps)</td>
+<td><strong>1-person = 1 vote</strong></td>
+<td>Same reasoning</td>
+</tr>
+<tr class="odd">
+<td>Debate &amp; Vote (funding)</td>
+<td><strong>Balanced voting power</strong></td>
+<td>Reflects on-chain delegation; tempered by merit</td>
+</tr>
+<tr class="even">
+<td>Internal proposals (Vote stage)</td>
+<td><strong>Balanced voting power</strong></td>
+<td>Same</td>
+</tr>
+<tr class="odd">
+<td>Quick polls (tie-breaks)</td>
+<td><strong>Balanced voting power</strong></td>
+<td>Consistent with the parent D&amp;V stage</td>
+</tr>
+<tr class="even">
+<td>Board-only internal proposals</td>
+<td><strong>1 member = 1 vote</strong> (5 voters)</td>
+<td>Small group</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-balanced-voting-power-formula">4.2 Balanced voting power
+formula</h3>
+<pre><code>BasePower      = log10(on_chain_stake_in_lovelace_div_1_million)
+MeritMultiplier = 1 + (merit_points / 200)         where merit_points in [-200, +200]
+FinalPower     = BasePower × MeritMultiplier</code></pre>
+<p>Worked example:</p>
+<table>
+<thead>
+<tr class="header">
+<th>On-chain stake (ADA)</th>
+<th>BasePower (log10)</th>
+<th>Merit</th>
+<th>Multiplier</th>
+<th>FinalPower</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>100,000</td>
+<td>5</td>
+<td>0</td>
+<td>1.00</td>
+<td>5.0</td>
+</tr>
+<tr class="even">
+<td>1,000,000</td>
+<td>6</td>
+<td>+100</td>
+<td>1.50</td>
+<td>9.0</td>
+</tr>
+<tr class="odd">
+<td>100,000,000</td>
+<td>8</td>
+<td>−100</td>
+<td>0.50</td>
+<td>4.0</td>
+</tr>
+<tr class="even">
+<td>100,000,000</td>
+<td>8</td>
+<td>+200</td>
+<td>2.00</td>
+<td>16.0 (max)</td>
+</tr>
+<tr class="odd">
+<td>1,000,000</td>
+<td>6</td>
+<td>−200</td>
+<td>0.00</td>
+<td>0.0 (min)</td>
+</tr>
+</tbody>
+</table>
+<p>A DRep at -200 merit effectively has zero voting power. This is
+deliberate: it serves as a "soft removal" without requiring a board
+action. A DRep at +200 doubles their voice.</p>
+<h3 id="43-snapshots">4.3 Snapshots</h3>
+<ul>
+<li><strong>When taken:</strong> At the moment voting opens for a
+proposal. Frozen for the duration of voting and result-calculation.</li>
+<li><strong>What's captured per voter:</strong> stake (Lovelace), merit
+points, BasePower, MeritMultiplier, FinalPower</li>
+<li><strong>Persistence:</strong> Stored in <code>vote_snapshot</code>
+table with proposal_id; anchored on-chain (hash) at snapshot time.</li>
+<li><strong>Why fixed:</strong> Prevents vote-buying via short-term
+stake movement; verifiable post-hoc.</li>
+</ul>
+<h3 id="44-abstain-and-missing-votes--denominator-rules">4.4 Abstain and
+missing votes — denominator rules</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Vote</th>
+<th>Counts toward denominator?</th>
+<th>Earns merit?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>YES</td>
+<td>yes</td>
+<td>+1</td>
+</tr>
+<tr class="even">
+<td>NO</td>
+<td>yes</td>
+<td>+1</td>
+</tr>
+<tr class="odd">
+<td>ABSTAIN</td>
+<td><strong>subtracted from denominator</strong></td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td>No vote cast (no avoid signaled)</td>
+<td>yes (as implicit NO)</td>
+<td>−1</td>
+</tr>
+<tr class="odd">
+<td>No vote cast (avoid signaled)</td>
+<td>yes (as implicit NO)</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>Approval formula:</p>
+<pre><code>approved iff (yes_power) / (total_power - abstain_power) &gt;= threshold</code></pre>
+<p>Worked examples (threshold 75%):</p>
+<table>
+<thead>
+<tr class="header">
+<th>Total power</th>
+<th>YES</th>
+<th>NO</th>
+<th>Abstain</th>
+<th>Missing</th>
+<th>Denominator</th>
+<th>YES%</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>36</td>
+<td>28</td>
+<td>8</td>
+<td>0</td>
+<td>0</td>
+<td>36</td>
+<td>77.8%</td>
+<td>APPROVED</td>
+</tr>
+<tr class="even">
+<td>36</td>
+<td>20</td>
+<td>8</td>
+<td>8</td>
+<td>0</td>
+<td>28</td>
+<td>71.4%</td>
+<td>REJECTED</td>
+</tr>
+<tr class="odd">
+<td>36</td>
+<td>17</td>
+<td>8</td>
+<td>0</td>
+<td>11 (impl. NO)</td>
+<td>36</td>
+<td>47.2%</td>
+<td>REJECTED</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5-rounds-and-categories">5. Rounds and Categories</h2>
+<h3 id="51-concepts">5.1 Concepts</h3>
+<p>A <strong>round</strong> is the unit of operation. It bundles:</p>
+<ul>
+<li>A budget (received from Intersect via Treasury Withdrawal)</li>
+<li>A set of categories (board-defined per round)</li>
+<li>A sequence of stages: Preparation → Filtering → Debate &amp; Vote →
+Voting Result → Funding (Milestones)</li>
+<li>A roster of eligible DReps</li>
+</ul>
+<p>Multiple rounds can be active simultaneously, but <strong>only one
+Filtering stage can be active at any time</strong> (operational
+simplification — filtering DReps shouldn't be torn between two
+rounds).</p>
+<h3 id="52-round-structure-single-round-time-wise">5.2 Round structure
+(single round, time-wise)</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 160" font-family="Arial, sans-serif" font-size="13">
+  <text x="400" y="22" text-anchor="middle" font-weight="bold">Round Structure (single round)</text>
+  <rect x="40" y="50" width="160" height="50" fill="#dbeafe" stroke="#333"/>
+  <text x="120" y="78" text-anchor="middle">FILTERING</text>
+  <text x="120" y="120" text-anchor="middle" font-size="11">6–8 weeks</text>
+  <rect x="200" y="50" width="200" height="50" fill="#c7d2fe" stroke="#333"/>
+  <text x="300" y="78" text-anchor="middle">DEBATE &amp; VOTE</text>
+  <text x="300" y="120" text-anchor="middle" font-size="11">6–10 weeks</text>
+  <rect x="400" y="50" width="360" height="50" fill="#bbf7d0" stroke="#333"/>
+  <text x="580" y="78" text-anchor="middle">MILESTONE-BASED FUNDING</text>
+  <text x="580" y="120" text-anchor="middle" font-size="11">1–1.5 years</text>
+</svg>
+
+<h3 id="53-categories">5.3 Categories</h3>
+<p>Each round defines a list of <strong>categories</strong>. A category
+has:</p>
+<ul>
+<li>Name and description</li>
+<li><code>category_type</code> — <code>GRANT</code> (multi-winner) or
+<code>RFP</code> (single-winner)</li>
+<li>Allocated budget (ADA)</li>
+<li>Min and max funding request per proposal</li>
+<li>Conditions / restrictions text</li>
+</ul>
+<p>Two categories may share a name if they have different types (e.g.,
+"Ecosystem Growth [GRANT]" vs "Ecosystem Growth [RFP]"). Only one RFP
+per unique name per round.</p>
+<p><strong>Subcategories</strong> (cross-cutting tags) are configurable
+globally by the board, used for matching proposals to filtering DReps by
+expertise. Defaults: <em>Governance, DeFi, RWA &amp; Tokenization, L2s,
+Liquidity, Infrastructure, Hackathon, Meetup, Ecosystem, Tooling,
+Libraries, Documentation, Marketing</em>.</p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 220" font-family="Arial, sans-serif" font-size="12">
+  <text x="350" y="22" text-anchor="middle" font-weight="bold">Round Categories — example</text>
+  <rect x="20" y="40" width="660" height="160" rx="8" fill="#f9fafb" stroke="#333"/>
+  <text x="350" y="62" text-anchor="middle" font-weight="bold">ROUND 1</text>
+  <rect x="40" y="80" width="140" height="40" rx="4" fill="#fee2e2" stroke="#333"/>
+  <text x="110" y="95" text-anchor="middle">Governance</text>
+  <text x="110" y="110" text-anchor="middle" font-size="10">GRANT · 1M ADA</text>
+  <rect x="190" y="80" width="140" height="40" rx="4" fill="#fee2e2" stroke="#333"/>
+  <text x="260" y="95" text-anchor="middle">DeFi</text>
+  <text x="260" y="110" text-anchor="middle" font-size="10">GRANT · 1M ADA</text>
+  <rect x="340" y="80" width="140" height="40" rx="4" fill="#fee2e2" stroke="#333"/>
+  <text x="410" y="95" text-anchor="middle">Ecosystem</text>
+  <text x="410" y="110" text-anchor="middle" font-size="10">GRANT · 1M ADA</text>
+  <rect x="490" y="80" width="170" height="40" rx="4" fill="#dbeafe" stroke="#333"/>
+  <text x="575" y="95" text-anchor="middle">Ecosystem Growth</text>
+  <text x="575" y="110" text-anchor="middle" font-size="10">RFP · 1M ADA · 1 winner</text>
+  <rect x="40" y="140" width="140" height="40" rx="4" fill="#fee2e2" stroke="#333"/>
+  <text x="110" y="155" text-anchor="middle">Research</text>
+  <text x="110" y="170" text-anchor="middle" font-size="10">GRANT · 500K ADA</text>
+</svg>
+
+<h3 id="54-round-lifecycle-and-parallel-rounds">5.4 Round lifecycle and
+parallel rounds</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 280" font-family="Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="ar1" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="440" y="22" text-anchor="middle" font-weight="bold">Parallel Rounds — staggered start, overlapping funding stage</text>
+  <!-- Round 1 -->
+  <rect x="40" y="50" width="80" height="36" fill="#dbeafe" stroke="#333"/>
+  <text x="80" y="72" text-anchor="middle">FILTER</text>
+  <rect x="120" y="50" width="100" height="36" fill="#c7d2fe" stroke="#333"/>
+  <text x="170" y="72" text-anchor="middle">D &amp; V</text>
+  <rect x="220" y="50" width="540" height="36" fill="#bbf7d0" stroke="#333"/>
+  <text x="490" y="72" text-anchor="middle">MILESTONE FUNDING (Round 1)</text>
+  <!-- Round 2 -->
+  <rect x="200" y="100" width="80" height="36" fill="#dbeafe" stroke="#333"/>
+  <text x="240" y="122" text-anchor="middle">FILTER</text>
+  <rect x="280" y="100" width="100" height="36" fill="#c7d2fe" stroke="#333"/>
+  <text x="330" y="122" text-anchor="middle">D &amp; V</text>
+  <rect x="380" y="100" width="380" height="36" fill="#bbf7d0" stroke="#333"/>
+  <text x="570" y="122" text-anchor="middle">MILESTONE FUNDING (Round 2)</text>
+  <!-- Round 3 -->
+  <rect x="380" y="150" width="80" height="36" fill="#dbeafe" stroke="#333"/>
+  <text x="420" y="172" text-anchor="middle">FILTER</text>
+  <rect x="460" y="150" width="100" height="36" fill="#c7d2fe" stroke="#333"/>
+  <text x="510" y="172" text-anchor="middle">D &amp; V</text>
+  <rect x="560" y="150" width="200" height="36" fill="#bbf7d0" stroke="#333"/>
+  <text x="660" y="172" text-anchor="middle">MILESTONE FUNDING (R3)</text>
+  <!-- Time axis -->
+  <line x1="40" y1="220" x2="780" y2="220" stroke="#333" marker-end="url(#ar1)"/>
+  <text x="100" y="240" text-anchor="middle" font-size="11">Year 1</text>
+  <text x="450" y="240" text-anchor="middle" font-size="11">Year 2</text>
+  <line x1="440" y1="215" x2="440" y2="225" stroke="#333"/>
+  <text x="50" y="260" font-size="11" fill="#666">Note: only ONE Filtering OR Debate &amp; Vote stage is active at any given time across all rounds.</text>
+</svg>
+
+<h3 id="55-leftover-funds">5.5 Leftover funds</h3>
+<p>If a project fails to deliver all milestones, its remaining
+allocation is <strong>not</strong> redistributed within the same round.
+Instead, at round close (when the last milestone-checking stage ends),
+the platform produces a leftover report and the board moves the unused
+funds either to a subsequent round's budget address or returns them to
+the Cardano Treasury via the multisig.</p>
+<p>This is handled <strong>operationally</strong> by the board, not
+automatically by the platform.</p>
+<hr />
+<h2 id="6-round-preparation-stage">6. Round Preparation Stage</h2>
+<p>When a round is started, the board configures it before the
+Submission period opens. All settings remain editable mid-round (with
+auto-shift of dependent periods).</p>
+<p><strong>Configuration fields:</strong></p>
+<ul>
+<li><code>round_number</code> (auto), <code>round_name</code> (optional
+override)</li>
+<li><code>categories[]</code> — name, type (GRANT/RFP), description,
+conditions, min/max ADA, allocated budget</li>
+<li><code>submission_template_id</code> per category</li>
+<li><code>eligible_dreps[]</code> — defaults to all admitted DReps;
+board can deselect</li>
+<li><code>filter_reviewer_count</code> — default 5</li>
+<li><code>filter_approval_votes</code> — default 3</li>
+<li><code>dv_approval_threshold_pct</code> — default 67</li>
+<li><code>milestone_reviewer_count</code> — default 3</li>
+<li>Period start/end dates for each sub-stage:
+<ul>
+<li>Submission start / end</li>
+<li>Filtering Feedback 1 start / end</li>
+<li>Editing window (overlaps with Feedback 1 in part, must end before
+Feedback 2)</li>
+<li>Filtering Feedback 2 start / end</li>
+<li>D&amp;V Feedback start / end</li>
+<li>D&amp;V Editing start / end</li>
+<li>D&amp;V Voting start / end</li>
+<li>Voting Result validation start / end</li>
+<li>Voting Result publication date</li>
+</ul></li>
+</ul>
+<p><strong>Auto-shift rule:</strong> If the board edits any period to
+extend it, all subsequent periods shift by the same delta. The platform
+writes the new schedule to a <code>round_schedule_history</code> audit
+log.</p>
+<p><strong>Board action required when:</strong></p>
+<ul>
+<li>A DRep can't vote and there's no obvious replacement (rare)</li>
+<li>A voting period needs explicit prolongation</li>
+<li>Submissions arrived with unpaid fees and the period is ending</li>
+</ul>
+<hr />
+<h2 id="7-filtering-stage">7. Filtering Stage</h2>
+<p>Goal: 5 randomly selected DReps decide whether a proposal proceeds to
+Debate &amp; Vote. Default approval: 3 of 5.</p>
+<h3 id="71-reviewer-assignment">7.1 Reviewer assignment</h3>
+<p>A DRep opts into the filtering pool and declares
+<strong>subcategories</strong> they understand. When the Submission
+stage ends, the platform automatically assigns reviewers per
+proposal:</p>
+<ol type="1">
+<li><strong>Filter the pool by category match</strong> — collect all
+opted-in DReps whose declared subcategories overlap with the proposal's
+subcategories.</li>
+<li><strong>Random draw within the filtered subset</strong> — using a
+verifiable seed derived from the latest Cardano block hash + proposal
+id, draw 5 DReps. The algorithm preferentially picks DReps who have been
+assigned the fewest times this round (equal-participation
+property).</li>
+<li><strong>Notify the 5 DReps</strong> — they have 2 days to accept the
+assignment.</li>
+<li><strong>If an assigned DRep declines or doesn't respond in
+48h:</strong> the platform draws 3 replacements; the first to accept
+gets the assignment.</li>
+<li><strong>If an assigned DRep later signals avoid
+(vacation/sickness):</strong> auto-reassigned (per decision #31), no
+merit penalty.</li>
+</ol>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" font-family="Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="af" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="440" y="22" text-anchor="middle" font-weight="bold">Filtering — Reviewer Assignment and Voting</text>
+  <!-- Pool -->
+  <rect x="30" y="50" width="220" height="60" rx="6" fill="#fef3c7" stroke="#333"/>
+  <text x="140" y="78" text-anchor="middle">DRep filtering pool</text>
+  <text x="140" y="94" text-anchor="middle" font-size="10">(all DReps opted in)</text>
+  <!-- Category filter -->
+  <rect x="290" y="50" width="180" height="60" rx="6" fill="#fde68a" stroke="#333"/>
+  <text x="380" y="78" text-anchor="middle">Category-match filter</text>
+  <text x="380" y="94" text-anchor="middle" font-size="10">(subcategory overlap)</text>
+  <!-- Random draw -->
+  <rect x="510" y="50" width="180" height="60" rx="6" fill="#fcd34d" stroke="#333"/>
+  <text x="600" y="74" text-anchor="middle">Random draw</text>
+  <text x="600" y="90" text-anchor="middle" font-size="10">seed = blockhash + proposal_id</text>
+  <text x="600" y="104" text-anchor="middle" font-size="10">prefer least-assigned DReps</text>
+  <!-- Assigned 5 -->
+  <rect x="290" y="160" width="400" height="60" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="490" y="184" text-anchor="middle">5 assigned DReps — must accept within 2 days</text>
+  <text x="490" y="202" text-anchor="middle" font-size="10">declines / no-show → draw 3 replacements (first-accept wins)</text>
+  <!-- Vote 1 -->
+  <rect x="40" y="260" width="200" height="60" rx="6" fill="#bfdbfe" stroke="#333"/>
+  <text x="140" y="282" text-anchor="middle">Feedback &amp; Vote 1</text>
+  <text x="140" y="300" text-anchor="middle" font-size="10">1p=1v · ≥3 YES → ACCEPTED</text>
+  <text x="140" y="314" text-anchor="middle" font-size="10">&lt;3 YES → submitter may edit</text>
+  <rect x="280" y="260" width="200" height="60" rx="6" fill="#fde68a" stroke="#333"/>
+  <text x="380" y="282" text-anchor="middle">Editing period</text>
+  <text x="380" y="300" text-anchor="middle" font-size="10">submitter revises &amp; resubmits</text>
+  <rect x="520" y="260" width="200" height="60" rx="6" fill="#bfdbfe" stroke="#333"/>
+  <text x="620" y="282" text-anchor="middle">Feedback &amp; Vote 2</text>
+  <text x="620" y="300" text-anchor="middle" font-size="10">final accept or reject</text>
+  <line x1="250" y1="80" x2="285" y2="80" stroke="#333" marker-end="url(#af)"/>
+  <line x1="470" y1="80" x2="505" y2="80" stroke="#333" marker-end="url(#af)"/>
+  <line x1="600" y1="110" x2="490" y2="158" stroke="#333" marker-end="url(#af)"/>
+  <line x1="240" y1="290" x2="278" y2="290" stroke="#333" marker-end="url(#af)"/>
+  <line x1="480" y1="290" x2="518" y2="290" stroke="#333" marker-end="url(#af)"/>
+</svg>
+
+<h3 id="72-voting-logic">7.2 Voting logic</h3>
+<ul>
+<li>Each of the 5 assigned DReps casts <strong>YES</strong>,
+<strong>NO</strong>, or <strong>ABSTAIN</strong> (abstain only for
+conflict of interest or signaled avoid).</li>
+<li>If 3 YES are reached before the period ends, the proposal can be
+moved to ACCEPTED immediately (no need to wait for stragglers — the
+result is mathematically determined).</li>
+<li>If 3 NO are reached, similarly: the proposal is REJECTED immediately
+and moves to the editing period.</li>
+<li>An ABSTAIN triggers automatic reassignment to another DRep (since
+1p=1v needs a cast vote).</li>
+<li>A NO vote requires written rationale. YES vote: rationale
+optional.</li>
+</ul>
+<h3 id="73-timeline-visual">7.3 Timeline (visual)</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 280" font-family="Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="at" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="430" y="22" text-anchor="middle" font-weight="bold">Filtering Stage — Timeline</text>
+  <rect x="30" y="60" width="140" height="40" fill="#fff" stroke="#333"/>
+  <text x="100" y="84" text-anchor="middle">Submission window</text>
+  <rect x="180" y="60" width="180" height="40" fill="#bfdbfe" stroke="#333"/>
+  <text x="270" y="84" text-anchor="middle">Feedback &amp; Vote 1</text>
+  <rect x="370" y="60" width="160" height="40" fill="#fde68a" stroke="#333"/>
+  <text x="450" y="84" text-anchor="middle">Editing (if rejected)</text>
+  <rect x="540" y="60" width="180" height="40" fill="#bfdbfe" stroke="#333"/>
+  <text x="630" y="84" text-anchor="middle">Feedback &amp; Vote 2</text>
+  <rect x="730" y="60" width="100" height="40" fill="#dcfce7" stroke="#333"/>
+  <text x="780" y="80" text-anchor="middle">Result</text>
+  <text x="780" y="94" text-anchor="middle" font-size="10">to D&amp;V or final NO</text>
+  <text x="100" y="130" text-anchor="middle" font-size="10">2–3 weeks</text>
+  <text x="270" y="130" text-anchor="middle" font-size="10">1 week</text>
+  <text x="450" y="130" text-anchor="middle" font-size="10">3–5 days</text>
+  <text x="630" y="130" text-anchor="middle" font-size="10">1 week</text>
+  <text x="430" y="160" text-anchor="middle" font-size="11" fill="#374151">Editing period must overlap Feedback 1 end and finish before Feedback 2 begins.</text>
+  <!-- Result clear -->
+  <text x="30" y="200" font-weight="bold">Result-clear shortcut:</text>
+  <text x="30" y="218" font-size="11">If 3 YES (or 3 NO) reached early → proposal advances/rejects immediately; remaining DReps' votes are recorded but not required for the decision.</text>
+  <text x="30" y="240" font-weight="bold">Replacement:</text>
+  <text x="30" y="258" font-size="11">If result is not yet clear and a DRep is absent at deadline → auto-extend voting by 3 days and draw a replacement.</text>
+</svg>
+
+<h3 id="74-edge-cases">7.4 Edge cases</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Case</th>
+<th>Handling</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Assigned DRep doesn't accept in 48h</td>
+<td>Draw 3 replacements, first-accept wins</td>
+</tr>
+<tr class="even">
+<td>Assigned DRep accepts then signals avoid</td>
+<td>Auto-replace; no merit penalty</td>
+</tr>
+<tr class="odd">
+<td>4 DReps voted YES (or NO) — clear result</td>
+<td>Proposal advances immediately; 5th DRep still gets reward if they
+vote on time</td>
+</tr>
+<tr class="even">
+<td>Voting deadline passes with split 2-2</td>
+<td>Auto-extend 3 days, draw a replacement for the missing 5th</td>
+</tr>
+<tr class="odd">
+<td>Submitter resubmits before Feedback 2</td>
+<td>DReps re-review the edited version and vote again</td>
+</tr>
+<tr class="even">
+<td>Same DRep votes differently in F1 vs F2</td>
+<td>Allowed; only F2 result counts toward final filtering outcome</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8-debate-and-vote-stage">8. Debate and Vote Stage</h2>
+<p>Once a proposal passes Filtering, it enters Debate &amp; Vote. All
+admitted DReps can participate; board members can opt in.</p>
+<h3 id="81-sub-phases">8.1 Sub-phases</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 220" font-family="Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="adv" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="430" y="22" text-anchor="middle" font-weight="bold">Debate &amp; Vote Stage — Sub-phases</text>
+  <rect x="40" y="60" width="180" height="50" fill="#fff7ed" stroke="#333"/>
+  <text x="130" y="80" text-anchor="middle">Feedback / Debate</text>
+  <text x="130" y="96" text-anchor="middle" font-size="10">DReps comment; submitter</text>
+  <text x="130" y="108" text-anchor="middle" font-size="10">may edit</text>
+  <rect x="240" y="60" width="180" height="50" fill="#fff7ed" stroke="#333"/>
+  <text x="330" y="80" text-anchor="middle">Editing (extended)</text>
+  <text x="330" y="96" text-anchor="middle" font-size="10">Edits close; feedback may</text>
+  <text x="330" y="108" text-anchor="middle" font-size="10">continue read-only</text>
+  <rect x="440" y="60" width="180" height="50" fill="#bfdbfe" stroke="#333"/>
+  <text x="530" y="80" text-anchor="middle">Voting</text>
+  <text x="530" y="96" text-anchor="middle" font-size="10">balanced power · 3 options</text>
+  <text x="530" y="108" text-anchor="middle" font-size="10">rationale required</text>
+  <rect x="640" y="60" width="180" height="50" fill="#dcfce7" stroke="#333"/>
+  <text x="730" y="80" text-anchor="middle">Result</text>
+  <text x="730" y="96" text-anchor="middle" font-size="10">tally · quick poll (if tie)</text>
+  <text x="730" y="108" text-anchor="middle" font-size="10">board publishes</text>
+  <line x1="220" y1="85" x2="238" y2="85" stroke="#333" marker-end="url(#adv)"/>
+  <line x1="420" y1="85" x2="438" y2="85" stroke="#333" marker-end="url(#adv)"/>
+  <line x1="620" y1="85" x2="638" y2="85" stroke="#333" marker-end="url(#adv)"/>
+  <text x="430" y="160" text-anchor="middle" font-size="11" fill="#374151">During Voting: votes can be changed (last vote wins). Rationale required for any cast vote.</text>
+</svg>
+
+<h3 id="82-vote-mechanics">8.2 Vote mechanics</h3>
+<ul>
+<li><strong>Voters:</strong> all admitted DReps eligible for the round,
+plus any board members who explicitly opt in</li>
+<li><strong>Voting power:</strong> snapshotted at vote-start (section
+4.3)</li>
+<li><strong>Options:</strong> <code>YES</code>, <code>NO</code>,
+<code>ABSTAIN</code></li>
+<li><strong>Rationale:</strong> mandatory (minimum 200 characters) for
+any cast vote</li>
+<li><strong>Vote change:</strong> allowed during the voting period; the
+latest vote counts</li>
+<li><strong>Threshold:</strong> default 67% (configurable per
+round)</li>
+</ul>
+<h3 id="83-threshold-examples">8.3 Threshold examples</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 460" font-family="Arial, sans-serif" font-size="11">
+  <text x="410" y="22" text-anchor="middle" font-weight="bold">Threshold (75%) — Three Outcomes</text>
+  <!-- Case 1 -->
+  <text x="30" y="60" font-weight="bold">Case 1 — All vote, no abstain. APPROVED.</text>
+  <text x="30" y="78">Total power 36 · YES 28 · NO 8 · Abstain 0 · Denominator 36 · YES% 77.8</text>
+  <rect x="30" y="90" width="600" height="22" fill="#fecaca" stroke="#333"/>
+  <rect x="30" y="90" width="467" height="22" fill="#86efac" stroke="#333"/>
+  <line x1="480" y1="86" x2="480" y2="116" stroke="#dc2626" stroke-width="2"/>
+  <text x="488" y="130" font-size="10" fill="#dc2626">threshold 75%</text>
+  <!-- Case 2 -->
+  <text x="30" y="180" font-weight="bold">Case 2 — Abstain reduces denominator. REJECTED.</text>
+  <text x="30" y="198">Total power 36 · YES 20 · NO 8 · Abstain 8 · Denominator 28 · YES% 71.4</text>
+  <rect x="30" y="210" width="600" height="22" fill="#fecaca" stroke="#333"/>
+  <rect x="30" y="210" width="429" height="22" fill="#86efac" stroke="#333"/>
+  <line x1="480" y1="206" x2="480" y2="236" stroke="#dc2626" stroke-width="2"/>
+  <text x="488" y="250" font-size="10" fill="#dc2626">threshold 75% of denom 28</text>
+  <!-- Case 3 -->
+  <text x="30" y="300" font-weight="bold">Case 3 — Missing votes count as implicit NO. REJECTED.</text>
+  <text x="30" y="318">Total power 36 · YES 17 · explicit NO 8 · implicit NO 11 · Denominator 36 · YES% 47.2</text>
+  <rect x="30" y="330" width="600" height="22" fill="#fecaca" stroke="#333"/>
+  <rect x="30" y="330" width="283" height="22" fill="#86efac" stroke="#333"/>
+  <line x1="480" y1="326" x2="480" y2="356" stroke="#dc2626" stroke-width="2"/>
+  <text x="488" y="370" font-size="10" fill="#dc2626">threshold 75%</text>
+</svg>
+
+<hr />
+<h2 id="9-voting-result-stage-and-quick-polls">9. Voting Result Stage
+and Quick Polls</h2>
+<p>After voting ends, the platform automatically computes scores and
+ranks proposals per category. Funding decisions follow Catalyst-style
+logic: top-ranked proposals that pass the threshold get funded, up to
+the category budget.</p>
+<h3 id="91-auto-ranking">9.1 Auto-ranking</h3>
+<p>For each category, the platform:</p>
+<ol type="1">
+<li>Filters proposals that <strong>passed the threshold</strong> (e.g.,
+67% YES).</li>
+<li>Sorts by <code>yes_power</code> descending, breaks ties by
+<code>yes_power / denominator</code> (the score percentage), then by
+submission timestamp ascending.</li>
+<li>Walks down the sorted list, assigning the category budget to
+proposals until the next proposal would exceed the budget.</li>
+<li>Proposals that fit → <code>APPROVED</code>. Proposals that pass the
+threshold but don't fit the budget →
+<code>REJECTED (budget-cut)</code>.</li>
+</ol>
+<h3 id="92-tie-break-quick-poll">9.2 Tie-break (Quick Poll)</h3>
+<p>If two or more proposals at the budget cliff have identical scores, a
+Quick Poll is triggered.</p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 340" font-family="Arial, sans-serif" font-size="11">
+  <text x="410" y="22" text-anchor="middle" font-weight="bold">Quick Poll — Tie at the Budget Cliff</text>
+  <!-- Ranked list -->
+  <rect x="40" y="50" width="120" height="30" fill="#bbf7d0" stroke="#333"/>
+  <text x="100" y="69" text-anchor="middle">Proposal A · 100</text>
+  <text x="180" y="69" font-size="10">funded</text>
+  <rect x="40" y="85" width="120" height="30" fill="#bbf7d0" stroke="#333"/>
+  <text x="100" y="104" text-anchor="middle">Proposal B · 84</text>
+  <text x="180" y="104" font-size="10">funded</text>
+  <rect x="40" y="120" width="120" height="30" fill="#fef9c3" stroke="#333"/>
+  <text x="100" y="139" text-anchor="middle">Proposal C · 75</text>
+  <text x="180" y="139" font-size="10">budget cliff — tie</text>
+  <rect x="40" y="155" width="120" height="30" fill="#fef9c3" stroke="#333"/>
+  <text x="100" y="174" text-anchor="middle">Proposal D · 75</text>
+  <text x="180" y="174" font-size="10">budget cliff — tie</text>
+  <line x1="30" y1="190" x2="290" y2="190" stroke="#dc2626" stroke-dasharray="4 3"/>
+  <text x="300" y="194" font-size="10" fill="#dc2626">threshold 67%</text>
+  <rect x="40" y="200" width="120" height="30" fill="#fecaca" stroke="#333"/>
+  <text x="100" y="219" text-anchor="middle">Proposal E · 61</text>
+  <!-- Quick poll panel -->
+  <rect x="380" y="50" width="400" height="200" rx="8" fill="#fff7ed" stroke="#333"/>
+  <text x="580" y="72" text-anchor="middle" font-weight="bold">Quick Poll</text>
+  <text x="580" y="92" text-anchor="middle" font-size="10">Auto-triggered by platform; board confirms with one click.</text>
+  <text x="395" y="115" font-size="11">• Voting system: balanced voting power (consistent with D&amp;V)</text>
+  <text x="395" y="133" font-size="11">• Voters: same eligibility as the D&amp;V stage</text>
+  <text x="395" y="151" font-size="11">• Duration: 48 hours (configurable)</text>
+  <text x="395" y="169" font-size="11">• Participation threshold: 51% of voting power (configurable)</text>
+  <text x="395" y="187" font-size="11">• If threshold not reached: extend up to 3 times</text>
+  <text x="395" y="205" font-size="11">• Final fallback: neither tied proposal is funded</text>
+  <text x="395" y="223" font-size="11" font-weight="bold">Question: "Which of C or D should be funded?"</text>
+</svg>
+
+<h3 id="93-result-publishing">9.3 Result publishing</h3>
+<p>The result becomes visible immediately as votes are tallied
+(transparency), but is <strong>not official</strong> until:</p>
+<ol type="1">
+<li>Platform calculates results</li>
+<li>Board launches quick poll(s) if needed (one-click confirm)</li>
+<li>Quick poll resolves</li>
+<li>Board finalizes the result via a "publish" action</li>
+</ol>
+<p>The publish action triggers an on-chain anchor (hash of final
+tally).</p>
+<hr />
+<h2 id="10-internal-proposals-threshold-voting">10. Internal Proposals
+(Threshold Voting)</h2>
+<p>Internal proposals are decisions about the DAO itself: process
+changes, board member removal, parameter changes, polls. They can be
+submitted by any admitted DRep or by a board member.</p>
+<h3 id="101-structure-of-an-internal-proposal">10.1 Structure of an
+internal proposal</h3>
+<p>When submitting, the submitter sets:</p>
+<ul>
+<li><code>internal_type</code> — <code>INSTRUCTIVE</code> /
+<code>INFORMATIVE</code> / <code>POLL</code></li>
+<li><code>voters_scope</code> — <code>DREPS_ONLY</code> /
+<code>BOARD_ONLY</code> / <code>BOTH</code></li>
+<li><code>actors[]</code> (for INSTRUCTIVE only) — who must act if
+approved</li>
+<li><code>threshold_kind</code> — <code>DEFAULT</code> (default 67%) or
+<code>IMPORTANT</code> (default 75%)</li>
+<li><code>voting_period_days</code></li>
+<li><code>delivery_date</code> (for INSTRUCTIVE)</li>
+<li><code>poll_options[]</code> (for POLL — multiple-choice)</li>
+</ul>
+<p>Examples of <code>IMPORTANT</code> proposals: removing a board
+member, replacing the entire board, changing the platform's reward
+formula.</p>
+<h3 id="102-lifecycle">10.2 Lifecycle</h3>
+<p><code>DRAFT → ACTIVE → APPROVED | REJECTED</code></p>
+<ul>
+<li>No <code>PENDING</code> (no fee, no pledge)</li>
+<li>No editing during the Vote phase; only comments</li>
+<li>No <code>COMPLETE</code> (no enforcement authority within the DAO
+platform — actions are off-platform)</li>
+</ul>
+<h3 id="103-voting">10.3 Voting</h3>
+<ul>
+<li>Voting system: <strong>balanced voting power</strong> (consistent
+with D&amp;V), except when <code>voters_scope = BOARD_ONLY</code>, in
+which case 1 member = 1 vote (5 voters).</li>
+<li>Threshold formula: same as Debate &amp; Vote (section 4.4).</li>
+<li>No rationale required (but allowed).</li>
+<li>Vote change allowed during the voting period.</li>
+</ul>
+<h3 id="104-effect-of-approval">10.4 Effect of approval</h3>
+<p>Approval has <strong>no automatic on-chain action</strong>. The
+proposal is published, anchored on-chain, and the named
+<code>actors</code> are expected to act off-platform. The platform
+tracks the <code>delivery_date</code> and sends reminder notifications,
+but enforcement is by social consensus + DRep accountability via merit
+points.</p>
+<hr />
+<h2 id="11-funding-stage--checking-milestones">11. Funding Stage —
+Checking Milestones</h2>
+<p>After D&amp;V approval and pledge confirmation, the proposal enters
+the Funding stage. This consists of: <strong>Reviewer Assignment →
+repeated (POA submission → Vote → Disbursement) for each
+milestone</strong>.</p>
+<h3 id="111-reviewer-assignment">11.1 Reviewer assignment</h3>
+<ul>
+<li>Same algorithm as filtering: category-match filter, then random
+draw, prefer least-assigned.</li>
+<li><code>milestone_reviewer_count</code> reviewers per proposal
+(default 3).</li>
+<li>Reviewers may be DReps or registered Experts.</li>
+<li><strong>Board must confirm the assignment</strong> before the
+funding stage begins (any board member can confirm; no vote needed).
+Board may also reassign at any time.</li>
+</ul>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 220" font-family="Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="amr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="410" y="22" text-anchor="middle" font-weight="bold">Milestone Reviewer Assignment</text>
+  <rect x="20" y="60" width="180" height="60" rx="6" fill="#dcfce7" stroke="#333"/>
+  <text x="110" y="84" text-anchor="middle">Proposal APPROVED</text>
+  <text x="110" y="100" text-anchor="middle" font-size="10">(after D&amp;V + pledge)</text>
+  <rect x="220" y="60" width="200" height="60" rx="6" fill="#fde68a" stroke="#333"/>
+  <text x="320" y="80" text-anchor="middle">Platform nominates</text>
+  <text x="320" y="96" text-anchor="middle">3 reviewers</text>
+  <text x="320" y="112" text-anchor="middle" font-size="10">category-match + random</text>
+  <rect x="440" y="60" width="180" height="60" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="530" y="80" text-anchor="middle">Board confirms</text>
+  <text x="530" y="96" text-anchor="middle" font-size="10">(any 1 board member)</text>
+  <text x="530" y="112" text-anchor="middle" font-size="10">may swap reviewers</text>
+  <rect x="640" y="60" width="160" height="60" rx="6" fill="#bbf7d0" stroke="#333"/>
+  <text x="720" y="80" text-anchor="middle">Funding stage</text>
+  <text x="720" y="96" text-anchor="middle" font-size="10">begins per milestone</text>
+  <line x1="200" y1="90" x2="218" y2="90" stroke="#333" marker-end="url(#amr)"/>
+  <line x1="420" y1="90" x2="438" y2="90" stroke="#333" marker-end="url(#amr)"/>
+  <line x1="620" y1="90" x2="638" y2="90" stroke="#333" marker-end="url(#amr)"/>
+  <text x="410" y="180" text-anchor="middle" font-size="11" fill="#374151">Reviewers may be replaced at any time during funding by any board member.</text>
+</svg>
+
+<h3 id="112-proof-of-achievement-poa-submission">11.2 Proof of
+Achievement (POA) submission</h3>
+<p>For each milestone:</p>
+<ul>
+<li>Submitter uploads/drafts POA on the milestone page (markdown + links
+to artifacts; no file uploads on-chain, only off-chain links)</li>
+<li>Platform notifies the assigned reviewers immediately</li>
+<li>Reviewers and submitter can communicate via comments</li>
+</ul>
+<h3 id="113-milestone-voting">11.3 Milestone voting</h3>
+<ul>
+<li>3 reviewers, <strong>1-person = 1 vote</strong></li>
+<li>YES vote: feedback optional. NO vote: feedback mandatory.</li>
+<li>Abstention not allowed (signaled avoid only).</li>
+<li>Result-clear shortcut: 2 YES (or 2 NO) → milestone closes
+immediately.</li>
+<li>The board may cast a vote to provide a missing 3rd (replacing an
+absent reviewer).</li>
+</ul>
+<h3 id="114-milestone-outcomes">11.4 Milestone outcomes</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Outcome</th>
+<th>Trigger</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Approved</td>
+<td>≥ 2 YES, votes complete OR period expired with YES majority</td>
+<td>Funds released; if pledge return is <code>PER_MILESTONE</code>,
+return that portion</td>
+</tr>
+<tr class="even">
+<td>Rejected (period still open)</td>
+<td>≥ 1 NO with feedback</td>
+<td>Submitter may resubmit POA; period auto-extends 4 weeks
+(configurable)</td>
+</tr>
+<tr class="odd">
+<td>Rejected (period exhausted)</td>
+<td>NO majority, no further attempts allowed</td>
+<td>Project terminated → <code>FAILED</code>. Reviewers get reward for
+remaining unreviewed milestones (see 12.6).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="115-period-and-prolongation-rules">11.5 Period and prolongation
+rules</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 320" font-family="Arial, sans-serif" font-size="11">
+  <text x="430" y="22" text-anchor="middle" font-weight="bold">Milestone Timeline Variants</text>
+  <!-- A: clean approval -->
+  <text x="30" y="55" font-weight="bold">A) Clean approval (POA submitted, all reviewers vote YES)</text>
+  <rect x="30" y="65" width="200" height="20" fill="#fde68a" stroke="#333"/>
+  <text x="130" y="80" text-anchor="middle">Base period to provide POA</text>
+  <rect x="230" y="65" width="180" height="20" fill="#bfdbfe" stroke="#333"/>
+  <text x="320" y="80" text-anchor="middle">Feedback &amp; Vote</text>
+  <rect x="410" y="65" width="80" height="20" fill="#86efac" stroke="#333"/>
+  <text x="450" y="80" text-anchor="middle">CLOSED</text>
+  <!-- B: rejected, re-submit -->
+  <text x="30" y="125" font-weight="bold">B) First POA rejected, second submitted, accepted</text>
+  <rect x="30" y="135" width="160" height="20" fill="#fde68a" stroke="#333"/>
+  <text x="110" y="150" text-anchor="middle">Base period</text>
+  <rect x="190" y="135" width="60" height="20" fill="#fca5a5" stroke="#333"/>
+  <text x="220" y="150" text-anchor="middle">NO</text>
+  <rect x="250" y="135" width="160" height="20" fill="#fde68a" stroke="#333"/>
+  <text x="330" y="150" text-anchor="middle">Auto-extended 4 weeks</text>
+  <rect x="410" y="135" width="160" height="20" fill="#bfdbfe" stroke="#333"/>
+  <text x="490" y="150" text-anchor="middle">Feedback &amp; Vote (2)</text>
+  <rect x="570" y="135" width="80" height="20" fill="#86efac" stroke="#333"/>
+  <text x="610" y="150" text-anchor="middle">CLOSED</text>
+  <!-- C: board acts -->
+  <text x="30" y="195" font-weight="bold">C) Reviewers missing — board extends and replaces</text>
+  <rect x="30" y="205" width="160" height="20" fill="#fde68a" stroke="#333"/>
+  <text x="110" y="220" text-anchor="middle">Base period</text>
+  <rect x="190" y="205" width="180" height="20" fill="#bfdbfe" stroke="#333"/>
+  <text x="280" y="220" text-anchor="middle">Feedback &amp; Vote (insufficient)</text>
+  <rect x="370" y="205" width="180" height="20" fill="#fbbf24" stroke="#333"/>
+  <text x="460" y="220" text-anchor="middle">Board acts (extend / replace)</text>
+  <rect x="550" y="205" width="100" height="20" fill="#86efac" stroke="#333"/>
+  <text x="600" y="220" text-anchor="middle">CLOSED</text>
+  <!-- D: terminal -->
+  <text x="30" y="265" font-weight="bold">D) Multiple POAs rejected, period exhausted</text>
+  <rect x="30" y="275" width="160" height="20" fill="#fde68a" stroke="#333"/>
+  <text x="110" y="290" text-anchor="middle">Base period</text>
+  <rect x="190" y="275" width="60" height="20" fill="#fca5a5" stroke="#333"/>
+  <text x="220" y="290" text-anchor="middle">NO</text>
+  <rect x="250" y="275" width="120" height="20" fill="#fde68a" stroke="#333"/>
+  <text x="310" y="290" text-anchor="middle">Extension</text>
+  <rect x="370" y="275" width="60" height="20" fill="#fca5a5" stroke="#333"/>
+  <text x="400" y="290" text-anchor="middle">NO</text>
+  <rect x="430" y="275" width="120" height="20" fill="#dc2626" stroke="#333"/>
+  <text x="490" y="290" text-anchor="middle" fill="#fff">FAILED</text>
+</svg>
+
+<table>
+<thead>
+<tr class="header">
+<th>Setting</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>MILESTONE_NOTIFICATION_DAYS_BEFORE_END</code></td>
+<td>3</td>
+<td>Notify submitter that POA is due</td>
+</tr>
+<tr class="even">
+<td><code>MILESTONE_AUTO_EXTENSION_DAYS</code></td>
+<td>28</td>
+<td>One automatic 4-week extension if POA missing or rejected</td>
+</tr>
+<tr class="odd">
+<td><code>MILESTONE_CHECK_PERIOD_DAYS</code></td>
+<td>10</td>
+<td>After POA submitted, reviewers have 10 days</td>
+</tr>
+<tr class="even">
+<td><code>MILESTONE_BOARD_EXTRA_EXTENSION_DAYS</code></td>
+<td>90 max, one-time</td>
+<td>Only the board can grant this</td>
+</tr>
+</tbody>
+</table>
+<p>The board may also terminate a project at any time (e.g., due to
+non-response), setting status to <code>FAILED</code>.</p>
+<hr />
+<h2 id="12-reward-system">12. Reward System</h2>
+<h3 id="121-income-sources-and-sinks">12.1 Income sources and sinks</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" font-family="Arial, sans-serif" font-size="11">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="440" y="22" text-anchor="middle" font-weight="bold">Reward Sources → Sinks</text>
+  <!-- Sources -->
+  <rect x="30" y="60" width="180" height="50" rx="6" fill="#fef3c7" stroke="#333"/>
+  <text x="120" y="82" text-anchor="middle" font-weight="bold">Submission fees</text>
+  <text x="120" y="98" text-anchor="middle" font-size="10">Commercial 2–3% · OSS 1%</text>
+  <rect x="30" y="160" width="180" height="50" rx="6" fill="#fef3c7" stroke="#333"/>
+  <text x="120" y="182" text-anchor="middle" font-weight="bold">Round rewards bucket</text>
+  <text x="120" y="198" text-anchor="middle" font-size="10">5% of TW (or fixed amount)</text>
+  <!-- Sinks -->
+  <rect x="380" y="60" width="180" height="50" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="470" y="82" text-anchor="middle">Filtering DReps</text>
+  <text x="470" y="98" text-anchor="middle" font-size="10">fixed reward only</text>
+  <rect x="380" y="130" width="180" height="50" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="470" y="152" text-anchor="middle">D&amp;V DReps — fixed</text>
+  <text x="470" y="168" text-anchor="middle" font-size="10">70% of D&amp;V allocation</text>
+  <rect x="380" y="195" width="180" height="50" rx="6" fill="#c7d2fe" stroke="#333"/>
+  <text x="470" y="217" text-anchor="middle">D&amp;V DReps — bonus</text>
+  <text x="470" y="233" text-anchor="middle" font-size="10">30% of D&amp;V allocation</text>
+  <rect x="380" y="260" width="180" height="50" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="470" y="282" text-anchor="middle">Milestone reviewers</text>
+  <text x="470" y="298" text-anchor="middle" font-size="10">fixed only · 40% of round bucket</text>
+  <!-- Arrows -->
+  <line x1="210" y1="85" x2="378" y2="85" stroke="#333" marker-end="url(#ar)"/>
+  <line x1="210" y1="185" x2="378" y2="155" stroke="#333" marker-end="url(#ar)"/>
+  <line x1="210" y1="185" x2="378" y2="220" stroke="#333" marker-end="url(#ar)"/>
+  <line x1="210" y1="185" x2="378" y2="280" stroke="#333" marker-end="url(#ar)"/>
+  <!-- Cap note -->
+  <rect x="600" y="60" width="260" height="240" rx="6" fill="#f3f4f6" stroke="#666"/>
+  <text x="730" y="82" text-anchor="middle" font-weight="bold">Splits (defaults, all configurable)</text>
+  <text x="615" y="108" font-size="11">• Submission fees → 100% Filtering, no bonus</text>
+  <text x="615" y="128" font-size="11">• Round bucket → 60% D&amp;V, 40% Milestones</text>
+  <text x="615" y="148" font-size="11">• D&amp;V slice → 70% fixed, 30% bonus</text>
+  <text x="615" y="168" font-size="11">• Milestone slice → 100% fixed, no bonus</text>
+  <text x="615" y="198" font-size="11" font-weight="bold">FEE_CAP_PER_ROUND</text>
+  <text x="615" y="216" font-size="11">If submission fees exceed cap, overflow</text>
+  <text x="615" y="232" font-size="11">moves to D&amp;V slice (no over-rewarding filtering).</text>
+</svg>
+
+<p><strong>Resolved from v1 ambiguity:</strong> Submission fees fund
+<strong>filtering only</strong>, with no bonus split. The 5% (or fixed)
+round bucket funds Debate &amp; Vote and Milestones according to two
+configurable splits.</p>
+<h3 id="122-configurable-parameters">12.2 Configurable parameters</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th>Default</th>
+<th>Range</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>STAGES_REWARD_SPLIT_DV_PCT</code></td>
+<td>60</td>
+<td>0–100</td>
+<td>% of round bucket going to D&amp;V (rest → Milestones)</td>
+</tr>
+<tr class="even">
+<td><code>BONUS_SHARE_DV_PCT</code></td>
+<td>30</td>
+<td>0–100</td>
+<td>% of D&amp;V slice that is bonus (rest = fixed)</td>
+</tr>
+<tr class="odd">
+<td><code>FEE_CAP_PER_ROUND_ADA</code></td>
+<td>50,000</td>
+<td>≥0</td>
+<td>Cap on filtering reward pool from submission fees</td>
+</tr>
+<tr class="even">
+<td><code>FEE_COMMERCIAL_PCT</code></td>
+<td>3</td>
+<td>1–5</td>
+<td>Submission fee for commercial projects</td>
+</tr>
+<tr class="odd">
+<td><code>FEE_COMMERCIAL_CAP_ADA</code></td>
+<td>5,000</td>
+<td>≥0</td>
+<td>Cap on commercial submission fee</td>
+</tr>
+<tr class="even">
+<td><code>FEE_OSS_PCT</code></td>
+<td>1</td>
+<td>0–3</td>
+<td>Submission fee for open-source projects</td>
+</tr>
+<tr class="odd">
+<td><code>FEE_OSS_CAP_ADA</code></td>
+<td>1,000</td>
+<td>≥0</td>
+<td>Cap on OSS submission fee</td>
+</tr>
+</tbody>
+</table>
+<h3 id="123-filtering-rewards-formula">12.3 Filtering rewards
+(formula)</h3>
+<pre><code>filter_reward_per_vote = min(sum(submission_fees_in_round), FEE_CAP_PER_ROUND) / total_cast_filter_votes
+drep_filter_reward    = filter_reward_per_vote × votes_cast_by_drep</code></pre>
+<p>Worked example (180K ADA in fees, 3,750 cast votes):</p>
+<ul>
+<li><code>filter_reward_per_vote = 180,000 / 3,750 = 48 ADA</code></li>
+<li>DRep with 100 cast votes earns
+<code>100 × 48 = 4,800 ADA</code></li>
+</ul>
+<h3 id="124-dv-fixed-rewards-formula">12.4 D&amp;V fixed rewards
+(formula)</h3>
+<pre><code>dv_fixed_pool         = round_bucket × STAGES_REWARD_SPLIT_DV_PCT/100 × (100 - BONUS_SHARE_DV_PCT)/100
+dv_fixed_per_vote     = dv_fixed_pool / total_dv_cast_votes
+drep_dv_fixed_reward  = dv_fixed_per_vote × votes_cast_by_drep</code></pre>
+<p><strong>Per decision #11:</strong> board members use the <strong>same
+formula as DReps</strong> for fixed rewards (no weight differentiation).
+This is the simpler of the two models considered in v1.</p>
+<h3 id="125-dv-bonuses-formula">12.5 D&amp;V bonuses (formula)</h3>
+<p>Bonuses reward both <strong>participation</strong> (how many votes
+cast) and <strong>voting power</strong> (how much a DRep represents).
+Board members get bonuses <strong>only</strong> if they opted into the
+funding vote.</p>
+<pre><code>participation_i = cast_votes_i / max_possible_votes_in_round
+weight_i        = participation_i × final_voting_power_i
+total_weight    = sum(weight_i for i in eligible_voters)
+drep_bonus_i    = bonus_pool × (weight_i / total_weight)</code></pre>
+<p>Worked example (bonus pool 34,000 ADA, max votes = 10):</p>
+<table>
+<thead>
+<tr class="header">
+<th>DRep</th>
+<th>FinalPower</th>
+<th>Cast</th>
+<th>Participation</th>
+<th>Weight</th>
+<th>Bonus</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>A</td>
+<td>5</td>
+<td>5</td>
+<td>0.5</td>
+<td>2.5</td>
+<td>3,935</td>
+</tr>
+<tr class="even">
+<td>B</td>
+<td>6</td>
+<td>7</td>
+<td>0.7</td>
+<td>4.2</td>
+<td>6,611</td>
+</tr>
+<tr class="odd">
+<td>C</td>
+<td>7</td>
+<td>10</td>
+<td>1.0</td>
+<td>7.0</td>
+<td>11,019</td>
+</tr>
+<tr class="even">
+<td>D</td>
+<td>8</td>
+<td>3</td>
+<td>0.3</td>
+<td>2.4</td>
+<td>3,778</td>
+</tr>
+<tr class="odd">
+<td>E</td>
+<td>9</td>
+<td>6</td>
+<td>0.6</td>
+<td>5.4</td>
+<td>8,500</td>
+</tr>
+<tr class="even">
+<td><strong>Total</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td><strong>21.5</strong></td>
+<td><strong>33,843 ≈ 34K</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="126-milestone-rewards-formula">12.6 Milestone rewards
+(formula)</h3>
+<p>Per-vote model, identical structure to D&amp;V fixed.</p>
+<pre><code>milestone_pool          = round_bucket × (100 - STAGES_REWARD_SPLIT_DV_PCT)/100
+total_milestone_checks  = total_milestones × milestone_reviewer_count
+reward_per_check        = milestone_pool / total_milestone_checks
+drep_milestone_reward   = reward_per_check × checks_performed_by_drep</code></pre>
+<p><strong>Special rule for early termination:</strong> If a project is
+terminated at milestone N (out of M), the assigned reviewers still
+receive credit for milestones N+1…M (they were prepared to do the work;
+the project failed, not the reviewer). They're paid at the end of the
+funding stage for the project.</p>
+<h3 id="127-distribution-timeline">12.7 Distribution timeline</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 220" font-family="Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="ad" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="430" y="22" text-anchor="middle" font-weight="bold">Reward Distribution Events (per round)</text>
+  <line x1="40" y1="120" x2="820" y2="120" stroke="#333" marker-end="url(#ad)"/>
+  <circle cx="120" cy="120" r="8" fill="#fde68a" stroke="#333"/>
+  <text x="120" y="100" text-anchor="middle" font-size="11">Filter end</text>
+  <text x="120" y="150" text-anchor="middle" font-size="10">payout 1×</text>
+  <circle cx="260" cy="120" r="8" fill="#fde68a" stroke="#333"/>
+  <text x="260" y="100" text-anchor="middle" font-size="11">D&amp;V end</text>
+  <text x="260" y="150" text-anchor="middle" font-size="10">payout 1×</text>
+  <circle cx="420" cy="120" r="8" fill="#bbf7d0" stroke="#333"/>
+  <text x="420" y="100" text-anchor="middle" font-size="11">Milestone Q1</text>
+  <text x="420" y="150" text-anchor="middle" font-size="10">interim payout</text>
+  <circle cx="540" cy="120" r="8" fill="#bbf7d0" stroke="#333"/>
+  <text x="540" y="100" text-anchor="middle" font-size="11">Milestone Q2</text>
+  <text x="540" y="150" text-anchor="middle" font-size="10">interim payout</text>
+  <circle cx="660" cy="120" r="8" fill="#bbf7d0" stroke="#333"/>
+  <text x="660" y="100" text-anchor="middle" font-size="11">Milestone Q3</text>
+  <text x="660" y="150" text-anchor="middle" font-size="10">interim payout</text>
+  <circle cx="780" cy="120" r="8" fill="#86efac" stroke="#333"/>
+  <text x="780" y="100" text-anchor="middle" font-size="11">Round close</text>
+  <text x="780" y="150" text-anchor="middle" font-size="10">final payout</text>
+</svg>
+
+<p>Total: 6 reward distributions per round (1 for filtering, 1 for
+D&amp;V, 4 over milestone funding).</p>
+<h3 id="128-distribution-mechanism">12.8 Distribution mechanism</h3>
+<p>For each distribution event, the backend:</p>
+<ol type="1">
+<li>Computes each DRep's reward</li>
+<li>Builds a Cardano multisig transaction with one output per DRep (or
+batched per-page if many)</li>
+<li>Notifies the board to co-sign</li>
+<li>After 3-of-5 signatures, submits to the network</li>
+<li>Records on-chain TX hash in the <code>reward_payout</code>
+table</li>
+</ol>
+<p>DReps can view their per-event reward in their dashboard before
+payout. The whole table is visible to the board.</p>
+<hr />
+<h2 id="13-merit-points-system">13. Merit Points System</h2>
+<h3 id="131-range-and-effect">13.1 Range and effect</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 200" font-family="Arial, sans-serif" font-size="12">
+  <text x="380" y="22" text-anchor="middle" font-weight="bold">Merit Points → Voting Power Multiplier</text>
+  <line x1="60" y1="100" x2="700" y2="100" stroke="#333" stroke-width="2"/>
+  <line x1="60" y1="90" x2="60" y2="110" stroke="#333" stroke-width="2"/>
+  <line x1="380" y1="90" x2="380" y2="110" stroke="#333" stroke-width="2"/>
+  <line x1="700" y1="90" x2="700" y2="110" stroke="#333" stroke-width="2"/>
+  <text x="60" y="80" text-anchor="middle" font-weight="bold">−200 pts</text>
+  <text x="60" y="135" text-anchor="middle" font-size="10">multiplier 0.00</text>
+  <text x="60" y="150" text-anchor="middle" font-size="10">(silent DRep)</text>
+  <text x="380" y="80" text-anchor="middle" font-weight="bold">0 pts (start)</text>
+  <text x="380" y="135" text-anchor="middle" font-size="10">multiplier 1.00</text>
+  <text x="700" y="80" text-anchor="middle" font-weight="bold">+200 pts</text>
+  <text x="700" y="135" text-anchor="middle" font-size="10">multiplier 2.00</text>
+  <text x="700" y="150" text-anchor="middle" font-size="10">(power × 2)</text>
+  <rect x="60" y="95" width="320" height="10" fill="#fca5a5"/>
+  <rect x="380" y="95" width="320" height="10" fill="#86efac"/>
+  <text x="220" y="170" text-anchor="middle" font-size="11" fill="#666">decreasing voting power</text>
+  <text x="540" y="170" text-anchor="middle" font-size="11" fill="#666">increasing voting power</text>
+</svg>
+
+<p>A DRep starts at 0 merit points. Range is <code>[−200, +200]</code>.
+Linear mapping: every 2 points = 1% adjustment to base voting power.</p>
+<h3 id="132-point-sources-gain">13.2 Point sources (gain)</h3>
+<p><strong>DReps:</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th>Action</th>
+<th>Points</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Vote in D&amp;V (funding)</td>
+<td>+1 per vote</td>
+</tr>
+<tr class="even">
+<td>Vote in D&amp;V (internal)</td>
+<td>+1 per vote</td>
+</tr>
+<tr class="odd">
+<td>Complete a filtering review (Feedback 1+2)</td>
+<td>+1</td>
+</tr>
+<tr class="even">
+<td>Check a milestone</td>
+<td>+1</td>
+</tr>
+<tr class="odd">
+<td>Submit an internal proposal</td>
+<td>+1</td>
+</tr>
+<tr class="even">
+<td>Vote in a Quick Poll</td>
+<td>+1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Board members</strong> (collective rewards — all board
+members earn even if only one did the action; assumes board operates as
+a team):</p>
+<table>
+<thead>
+<tr class="header">
+<th>Action</th>
+<th>Points (per board member)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Start a round</td>
+<td>+10</td>
+</tr>
+<tr class="even">
+<td>End a round</td>
+<td>+10</td>
+</tr>
+<tr class="odd">
+<td>Configure a round</td>
+<td>+10</td>
+</tr>
+<tr class="even">
+<td>Submit an internal proposal</td>
+<td>+5</td>
+</tr>
+<tr class="odd">
+<td>Distribute a reward batch via multisig</td>
+<td>+10</td>
+</tr>
+<tr class="even">
+<td>Keep DAO ledger (per month)</td>
+<td>+2</td>
+</tr>
+</tbody>
+</table>
+<h3 id="133-point-sinks-loss">13.3 Point sinks (loss)</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Action</th>
+<th>Points</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>DReps:</strong> miss vote in D&amp;V (no avoid
+signaled)</td>
+<td>−1 per missed vote</td>
+</tr>
+<tr class="even">
+<td><strong>DReps:</strong> miss filtering vote in time</td>
+<td>−1</td>
+</tr>
+<tr class="odd">
+<td><strong>DReps:</strong> miss milestone check in time</td>
+<td>−1</td>
+</tr>
+<tr class="even">
+<td><strong>DReps:</strong> miss a Quick Poll</td>
+<td>−1</td>
+</tr>
+<tr class="odd">
+<td><strong>Board:</strong> fail to send rewards in time (&gt;1 month
+after stage end)</td>
+<td>−10</td>
+</tr>
+</tbody>
+</table>
+<h3 id="134-avoid-period-interaction-per-decision-13">13.4 Avoid period
+interaction (per decision #13)</h3>
+<ul>
+<li>A DRep may pre-signal an <strong>avoid period</strong> (up to 6
+weeks/year, can be split). During this period, they cannot be assigned
+to filtering or milestone review, <strong>and</strong> missing D&amp;V
+votes during this period does <strong>not</strong> deduct merit
+points.</li>
+<li>If a DRep is <em>already</em> assigned at the time they signal
+avoid, the platform auto-reassigns and notifies the board. The DRep
+loses no merit; their replacement gets the credit.</li>
+<li>A DRep who ghosts (no signal, no vote) loses points per the table
+above.</li>
+</ul>
+<h3 id="135-cap-behavior">13.5 Cap behavior</h3>
+<ul>
+<li>A DRep at +200 cannot earn more; they retain +200 until they lose
+points.</li>
+<li>A DRep at −200 cannot lose more; they retain −200 until they gain
+points.</li>
+<li>No decay: merit points are sticky over time.</li>
+</ul>
+<h3 id="136-ledger">13.6 Ledger</h3>
+<p>Every change is recorded in a <code>merit_ledger</code> table:
+<code>(drep_id, delta, reason_code, reference_id, occurred_at)</code>.
+The current points are computed by summing the ledger. The daily anchor
+service hashes this ledger and posts to chain (section 23).</p>
+<hr />
+<h2 id="14-drep-admission-and-removal">14. DRep Admission and
+Removal</h2>
+<h3 id="141-sybil-protection--two-layers">14.1 Sybil protection — two
+layers</h3>
+<p><strong>Layer 1 — Autonomous admission gate
+(configurable):</strong></p>
+<p>A DRep can submit the application form only if they meet ONE of:</p>
+<ul>
+<li><code>MIN_OWN_VOTING_POWER_ADA</code> (default 1,000,000) — own
+stake delegated to themselves as DRep</li>
+<li>OR <code>MIN_DELEGATORS</code> (default 20) where each has at least
+<code>MIN_DELEGATOR_STAKE_ADA</code> (default 50,000)</li>
+<li>OR recommendation from an existing admitted DRep</li>
+</ul>
+<p><strong>Layer 2 — Board review:</strong></p>
+<p>After application, 3 of 5 board members must approve for admission. A
+NO vote requires written feedback.</p>
+<h3 id="142-admission-flow">14.2 Admission flow</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 240" font-family="Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="aa" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="440" y="22" text-anchor="middle" font-weight="bold">DRep Admission</text>
+  <rect x="20" y="60" width="140" height="50" rx="6" fill="#fff" stroke="#333"/>
+  <text x="90" y="84" text-anchor="middle">Wallet login</text>
+  <text x="90" y="100" text-anchor="middle" font-size="10">(viewer rights)</text>
+  <rect x="180" y="60" width="140" height="50" rx="6" fill="#fef3c7" stroke="#333"/>
+  <text x="250" y="80" text-anchor="middle">Auto-gate check</text>
+  <text x="250" y="96" text-anchor="middle" font-size="10">stake / delegators</text>
+  <text x="250" y="108" text-anchor="middle" font-size="10">/ recommendation</text>
+  <rect x="340" y="60" width="140" height="50" rx="6" fill="#fde68a" stroke="#333"/>
+  <text x="410" y="84" text-anchor="middle">Application form</text>
+  <text x="410" y="100" text-anchor="middle" font-size="10">bio · categories · KYC opt-in</text>
+  <rect x="500" y="60" width="140" height="50" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="570" y="84" text-anchor="middle">Board review</text>
+  <text x="570" y="100" text-anchor="middle" font-size="10">3 of 5 YES needed</text>
+  <rect x="680" y="40" width="160" height="40" rx="6" fill="#dcfce7" stroke="#333"/>
+  <text x="760" y="64" text-anchor="middle">Admitted</text>
+  <rect x="680" y="100" width="160" height="40" rx="6" fill="#fecaca" stroke="#333"/>
+  <text x="760" y="124" text-anchor="middle">Rejected (with feedback)</text>
+  <line x1="160" y1="85" x2="178" y2="85" stroke="#333" marker-end="url(#aa)"/>
+  <line x1="320" y1="85" x2="338" y2="85" stroke="#333" marker-end="url(#aa)"/>
+  <line x1="480" y1="85" x2="498" y2="85" stroke="#333" marker-end="url(#aa)"/>
+  <line x1="640" y1="80" x2="678" y2="60" stroke="#333" marker-end="url(#aa)"/>
+  <line x1="640" y1="90" x2="678" y2="120" stroke="#333" marker-end="url(#aa)"/>
+  <text x="440" y="175" text-anchor="middle" font-size="11" fill="#374151">Admission ≠ automatic participation in ongoing rounds. Board adds new DReps to a round explicitly.</text>
+</svg>
+
+<h3 id="143-application-form-fields">14.3 Application form fields</h3>
+<ul>
+<li>DRep ID (on-chain, CIP-95) — auto-detected from wallet</li>
+<li>Display name / nickname</li>
+<li>Social handles (X, LinkedIn, GitHub)</li>
+<li>Contact (Telegram, email)</li>
+<li>Categories (subcategory list — multi-select)</li>
+<li>Motivation (long text)</li>
+<li>Experience / education / skills</li>
+<li>KYC opt-in (yes/no, not enforced in MVP)</li>
+<li>Calls opt-in (yes/no)</li>
+<li>Admission-call opt-in (yes/no)</li>
+</ul>
+<h3 id="144-removal">14.4 Removal</h3>
+<ul>
+<li>Any board member can propose removal of a specific DRep</li>
+<li>Internal proposal with <code>voters_scope = BOARD_ONLY</code>,
+threshold 3 of 5</li>
+<li>During the review, the DRep can continue acting normally</li>
+<li>If approved, DRep loses DRep status (returns to viewer-only); they
+forfeit any unpaid rewards from the current round</li>
+<li>DRep history (votes, rationales) remains visible and attributed</li>
+</ul>
+<hr />
+<h2 id="15-dao-treasury">15. DAO Treasury</h2>
+<h3 id="151-multisig">15.1 Multisig</h3>
+<ul>
+<li><strong>3-of-5 native multisig</strong> wallet on Cardano (no smart
+contract; just a multi-signature payment address)</li>
+<li>Signers: the 5 board members; each uses a hardware-backed wallet on
+their own machine</li>
+<li>The DAO Multisig holds: round operational budget (from Intersect
+TW), submission fees, pledges, and any reserves</li>
+</ul>
+<h3 id="152-per-purpose-addresses">15.2 Per-purpose addresses</h3>
+<p>To simplify accounting, the platform uses <strong>derived
+addresses</strong> from the same multisig:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Purpose</th>
+<th>Address kind</th>
+<th>Lifetime</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Round budget</td>
+<td>One per round</td>
+<td>Funded by Intersect TW</td>
+</tr>
+<tr class="even">
+<td>Submission fees</td>
+<td>One per round</td>
+<td>Receives all fees in that round</td>
+</tr>
+<tr class="odd">
+<td>Pledges</td>
+<td>One per round</td>
+<td>Receives pledges from approved-pending teams</td>
+</tr>
+<tr class="even">
+<td>Rewards</td>
+<td>Reuses round budget address (no separation)</td>
+<td>—</td>
+</tr>
+<tr class="odd">
+<td>Operations</td>
+<td>Single, persistent</td>
+<td>Hosting, legals, ledger keeping</td>
+</tr>
+</tbody>
+</table>
+<p>A "round budget address" need not be a unique derivation; it can
+simply be the multisig address with the round id encoded in transaction
+metadata. This is the simpler approach and is the default in MVP.</p>
+<h3 id="153-fund-flow">15.3 Fund flow</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 320" font-family="Arial, sans-serif" font-size="11">
+  <defs>
+    <marker id="af2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="440" y="22" text-anchor="middle" font-weight="bold">Fund Flow (per Round)</text>
+  <!-- Intersect -->
+  <rect x="20" y="60" width="150" height="50" rx="6" fill="#e5e7eb" stroke="#333" stroke-dasharray="4 3"/>
+  <text x="95" y="82" text-anchor="middle">Intersect</text>
+  <text x="95" y="98" text-anchor="middle" font-size="10">(Treasury Withdrawal)</text>
+  <!-- DAO multisig -->
+  <rect x="240" y="60" width="180" height="50" rx="6" fill="#fef3c7" stroke="#333"/>
+  <text x="330" y="82" text-anchor="middle" font-weight="bold">DAO Multisig</text>
+  <text x="330" y="98" text-anchor="middle" font-size="10">Project funding + Rewards + Ops</text>
+  <!-- Submitters -->
+  <rect x="20" y="160" width="150" height="50" rx="6" fill="#fef9c3" stroke="#333"/>
+  <text x="95" y="184" text-anchor="middle">Submitters</text>
+  <text x="95" y="200" text-anchor="middle" font-size="10">submission fees + pledges</text>
+  <!-- Sinks -->
+  <rect x="500" y="40" width="140" height="40" rx="6" fill="#dcfce7" stroke="#333"/>
+  <text x="570" y="64" text-anchor="middle">Project teams</text>
+  <rect x="500" y="90" width="140" height="40" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="570" y="114" text-anchor="middle">DRep rewards</text>
+  <rect x="500" y="140" width="140" height="40" rx="6" fill="#fbcfe8" stroke="#333"/>
+  <text x="570" y="164" text-anchor="middle">Pledge returns</text>
+  <rect x="500" y="190" width="140" height="40" rx="6" fill="#e9d5ff" stroke="#333"/>
+  <text x="570" y="214" text-anchor="middle">Operations &amp; hosting</text>
+  <!-- Cardano treasury (leftovers) -->
+  <rect x="680" y="240" width="180" height="50" rx="6" fill="#e5e7eb" stroke="#333" stroke-dasharray="4 3"/>
+  <text x="770" y="262" text-anchor="middle">Cardano Treasury</text>
+  <text x="770" y="278" text-anchor="middle" font-size="10">(leftovers, end of round)</text>
+  <line x1="170" y1="85" x2="238" y2="85" stroke="#333" marker-end="url(#af2)"/>
+  <line x1="170" y1="185" x2="238" y2="110" stroke="#333" marker-end="url(#af2)"/>
+  <line x1="420" y1="85" x2="498" y2="60" stroke="#333" marker-end="url(#af2)"/>
+  <line x1="420" y1="85" x2="498" y2="110" stroke="#333" marker-end="url(#af2)"/>
+  <line x1="420" y1="85" x2="498" y2="160" stroke="#333" marker-end="url(#af2)"/>
+  <line x1="420" y1="85" x2="498" y2="210" stroke="#333" marker-end="url(#af2)"/>
+  <line x1="420" y1="110" x2="680" y2="265" stroke="#333" stroke-dasharray="3 3" marker-end="url(#af2)"/>
+</svg>
+
+<h3 id="154-reconciliation">15.4 Reconciliation</h3>
+<p>At any time, the DAO Multisig's on-chain balance should equal:</p>
+<pre><code>TW_received + fees_received + pledges_received
+  − project_disbursements_made − rewards_paid − pledges_returned − ops_paid</code></pre>
+<p>A daily reconciliation job verifies this and alerts the board on
+mismatch.</p>
+<hr />
+<h2 id="16-pledge-skin-in-the-game">16. Pledge (Skin in the Game)</h2>
+<h3 id="161-when-required">16.1 When required</h3>
+<p>A pledge is required when:</p>
+<ul>
+<li>The proposal is <code>is_commercial = true</code> AND</li>
+<li>The proposal
+<code>requested_amount_ada &gt; PLEDGE_THRESHOLD_ADA</code>
+(configurable, default 0 = always)</li>
+<li>Pledge amount: between 1% and 5% of
+<code>requested_amount_ada</code>, set by submitter, recorded in the
+proposal</li>
+</ul>
+<p>OSS proposals are not required to pledge.</p>
+<h3 id="162-submission-flow-per-decision-25">16.2 Submission flow (per
+decision #25)</h3>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 280" font-family="Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="ap" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <text x="430" y="22" text-anchor="middle" font-weight="bold">Pledge Submission and Verification</text>
+  <rect x="30" y="60" width="180" height="60" rx="6" fill="#dcfce7" stroke="#333"/>
+  <text x="120" y="82" text-anchor="middle">Proposal APPROVED</text>
+  <text x="120" y="98" text-anchor="middle" font-size="10">(after D&amp;V)</text>
+  <text x="120" y="112" text-anchor="middle" font-size="10">→ status PENDING (pledge)</text>
+  <rect x="240" y="60" width="200" height="60" rx="6" fill="#fef9c3" stroke="#333"/>
+  <text x="340" y="82" text-anchor="middle">Submitter sends pledge</text>
+  <text x="340" y="98" text-anchor="middle" font-size="10">to DAO Multisig address</text>
+  <text x="340" y="112" text-anchor="middle" font-size="10">(no metadata needed)</text>
+  <rect x="470" y="60" width="200" height="60" rx="6" fill="#fde68a" stroke="#333"/>
+  <text x="570" y="82" text-anchor="middle">Submitter provides TX hash</text>
+  <text x="570" y="98" text-anchor="middle" font-size="10">via proposal page</text>
+  <rect x="700" y="60" width="140" height="60" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="770" y="80" text-anchor="middle">Platform verifies</text>
+  <text x="770" y="96" text-anchor="middle" font-size="10">TX confirmed</text>
+  <text x="770" y="110" text-anchor="middle" font-size="10">amount matches</text>
+  <rect x="240" y="180" width="200" height="50" rx="6" fill="#dcfce7" stroke="#333"/>
+  <text x="340" y="200" text-anchor="middle">Status → APPROVED</text>
+  <text x="340" y="216" text-anchor="middle" font-size="10">milestone funding can begin</text>
+  <rect x="470" y="180" width="200" height="50" rx="6" fill="#dbeafe" stroke="#333"/>
+  <text x="570" y="200" text-anchor="middle">Board confirms</text>
+  <text x="570" y="216" text-anchor="middle" font-size="10">(any 1 member)</text>
+  <line x1="210" y1="90" x2="238" y2="90" stroke="#333" marker-end="url(#ap)"/>
+  <line x1="440" y1="90" x2="468" y2="90" stroke="#333" marker-end="url(#ap)"/>
+  <line x1="670" y1="90" x2="698" y2="90" stroke="#333" marker-end="url(#ap)"/>
+  <line x1="770" y1="120" x2="570" y2="178" stroke="#333" marker-end="url(#ap)"/>
+  <line x1="470" y1="205" x2="442" y2="205" stroke="#333" marker-end="url(#ap)"/>
+</svg>
+
+<p><strong>No new address per proposal.</strong> Submitters send pledges
+to the same DAO Multisig pledge address for the round. Identification is
+via:</p>
+<ol type="1">
+<li>TX hash provided by the submitter</li>
+<li>Platform polls Cardano via indexer to confirm the TX exists, is
+confirmed (≥ 2 confirmations), and the output amount ≥ required
+pledge</li>
+<li>The sender wallet's stake key is cross-checked against the
+submitter's wallet (must match)</li>
+</ol>
+<p>If the verification fails (wrong amount, wrong sender, TX not found),
+the proposal page shows an error and the submitter can re-submit with a
+corrected TX hash.</p>
+<h3 id="163-pledge-return">16.3 Pledge return</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>LAST_MILESTONE</code></td>
+<td>100% returned after the last milestone is approved</td>
+</tr>
+<tr class="even">
+<td><code>PER_MILESTONE</code></td>
+<td>Equal pro-rata share returned after each milestone is approved
+(e.g., 20% × 5 milestones)</td>
+</tr>
+</tbody>
+</table>
+<p>In both methods, the platform calculates the return amount, prepares
+the multisig TX, and notifies the board to sign.</p>
+<p>If the project fails before delivering all milestones:</p>
+<ul>
+<li><code>LAST_MILESTONE</code>: the pledge is
+<strong>forfeited</strong> to the DAO Treasury reserves.</li>
+<li><code>PER_MILESTONE</code>: only the proportional unreturned portion
+is forfeited.</li>
+</ul>
+<h3 id="164-if-the-team-cannot-send-the-pledge">16.4 If the team cannot
+send the pledge</h3>
+<p>After D&amp;V approval, the proposal sits in
+<code>PENDING (pledge)</code> for <code>PLEDGE_GRACE_DAYS</code>
+(default 14). If not received by then, the board may terminate the
+proposal (status → <code>REJECTED</code>, no funding) or extend the
+grace period.</p>
+<hr />
+<h2 id="17-dao-board-interim">17. DAO Board (Interim)</h2>
+<ul>
+<li>5 board members, elected off-chain initially (no on-chain election
+in MVP)</li>
+<li>1-year terms; re-election allowed (no term limits)</li>
+<li>A board member is also a DRep</li>
+<li>Board members can be removed via an internal proposal with
+<code>IMPORTANT</code> threshold (75%),
+<code>voters_scope = DREPS_ONLY</code> (board excluded from this
+specific vote to avoid self-defense)</li>
+</ul>
+<p><strong>Board responsibilities (recap):</strong></p>
+<ul>
+<li>Configure rounds (Preparation stage)</li>
+<li>Confirm reviewer assignments</li>
+<li>Distribute rewards (multisig signing)</li>
+<li>Admit/remove DReps</li>
+<li>Prolong periods when necessary</li>
+<li>Launch quick polls (one-click confirm)</li>
+<li>Verify pledges received</li>
+<li>Hosting/maintenance procurement</li>
+<li>Move leftovers to next round or back to Cardano Treasury</li>
+<li>Keep accounting ledger</li>
+</ul>
+<hr />
+<h2 id="18-submission-form">18. Submission Form</h2>
+<p>Submitters fill in a single form. Fields by section:</p>
+<p><strong>Header</strong></p>
+<ul>
+<li>Title</li>
+<li>Submitter — auto-filled from wallet</li>
+<li>Category — dropdown (per active round)</li>
+<li>Sub-categories — multi-select (used for reviewer matching)</li>
+<li>Project type — <code>COMMERCIAL</code> or <code>OSS</code> (affects
+fee calculation)</li>
+</ul>
+<p><strong>Funding ask</strong></p>
+<ul>
+<li>Requested amount (ADA)</li>
+<li>Submission fee — auto-computed and displayed, with TX hash
+field</li>
+</ul>
+<p><strong>Pledge</strong> (commercial only)</p>
+<ul>
+<li>Pledge amount (1–5% of requested)</li>
+<li>Return method (<code>LAST_MILESTONE</code> /
+<code>PER_MILESTONE</code>)</li>
+</ul>
+<p><strong>Milestones</strong> (repeatable rows)</p>
+<ul>
+<li>Index (auto)</li>
+<li>Description</li>
+<li>Amount (ADA) — must sum to <code>requested_amount_ada</code></li>
+<li>Deadline (days from project start)</li>
+<li>Deliverables (markdown)</li>
+</ul>
+<p><strong>Team</strong></p>
+<ul>
+<li>Team size</li>
+<li>FTEs per role</li>
+<li>Key members (name + experience + LinkedIn/GitHub)</li>
+</ul>
+<p><strong>Financials</strong></p>
+<ul>
+<li>Cost breakdown (markdown table)</li>
+<li>Skin-in-the-game (own capital provided, return preference)</li>
+<li>Revenue sharing (% tokens, % fees, period — for commercial)</li>
+</ul>
+<p><strong>Project</strong></p>
+<ul>
+<li>Problem statement</li>
+<li>Solution overview</li>
+<li>Roadmap and timeline</li>
+<li>Risks and mitigations</li>
+<li>Final pitch (max 500 words)</li>
+</ul>
+<p>Validation: all required fields present, milestone amounts sum to
+total, submission fee paid.</p>
+<hr />
+<h2 id="19-communication-and-notifications">19. Communication and
+Notifications</h2>
+<h3 id="191-comments-public">19.1 Comments (public)</h3>
+<p>Every proposal has a comment thread:</p>
+<ul>
+<li>Visible to everyone (no role gating)</li>
+<li>Comments attributed by display name + DRep ID</li>
+<li>Threaded one level (a comment can have replies; no nested
+replies)</li>
+<li>Editable for 5 minutes after posting; deletion creates a
+tombstone</li>
+</ul>
+<h3 id="192-private-messaging">19.2 Private messaging</h3>
+<ul>
+<li><strong>Submitter ↔︎ Board</strong>: dedicated thread on each
+proposal page (only submitter + 5 board members can see)</li>
+<li><strong>DReps ↔︎ Board (shared inbox)</strong>: any DRep can DM "the
+board" — message visible to all 5</li>
+<li><strong>No DM between individual DReps in MVP</strong> (deferred —
+Telegram works for that)</li>
+</ul>
+<h3 id="193-notifications">19.3 Notifications</h3>
+<p>Three channels, all opt-in per user (defaults given):</p>
+<table>
+<thead>
+<tr class="header">
+<th>Channel</th>
+<th>Default ON for</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>In-platform</td>
+<td>Everyone (when logged in)</td>
+<td>Bell icon + dropdown; persisted in DB until marked read</td>
+</tr>
+<tr class="even">
+<td>Email</td>
+<td>DReps and Board</td>
+<td>Transactional email service (SendGrid or AWS SES)</td>
+</tr>
+<tr class="odd">
+<td>Telegram</td>
+<td>Opt-in only</td>
+<td>Telegram bot; user binds chat_id via <code>/start</code> flow</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Event triggers (full list):</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th>Event</th>
+<th>Recipients</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Proposal submitted (fee paid)</td>
+<td>Filter pool DReps in matching categories</td>
+</tr>
+<tr class="even">
+<td>Filter assignment</td>
+<td>The 5 assigned DReps</td>
+</tr>
+<tr class="odd">
+<td>Filter feedback received</td>
+<td>Submitter</td>
+</tr>
+<tr class="even">
+<td>Filter result</td>
+<td>Submitter</td>
+</tr>
+<tr class="odd">
+<td>D&amp;V starts</td>
+<td>All eligible DReps; submitter</td>
+</tr>
+<tr class="even">
+<td>D&amp;V vote period last 3/2/1 day</td>
+<td>Eligible DReps who haven't voted</td>
+</tr>
+<tr class="odd">
+<td>D&amp;V result</td>
+<td>All DReps; submitter; board</td>
+</tr>
+<tr class="even">
+<td>Milestone reviewer assignment</td>
+<td>The 3 assigned reviewers</td>
+</tr>
+<tr class="odd">
+<td>Milestone POA submitted</td>
+<td>The 3 reviewers + board</td>
+</tr>
+<tr class="even">
+<td>Milestone period last 3/2/1 day</td>
+<td>Reviewers who haven't voted</td>
+</tr>
+<tr class="odd">
+<td>Milestone approved/rejected</td>
+<td>Submitter; board</td>
+</tr>
+<tr class="even">
+<td>Reward calculation ready</td>
+<td>Board</td>
+</tr>
+<tr class="odd">
+<td>Reward payout TX submitted</td>
+<td>Affected DReps</td>
+</tr>
+<tr class="even">
+<td>Pledge received and verified</td>
+<td>Submitter; board</td>
+</tr>
+<tr class="odd">
+<td>Quick poll launched</td>
+<td>All DReps; board</td>
+</tr>
+<tr class="even">
+<td>Internal proposal submitted</td>
+<td>All eligible voters</td>
+</tr>
+<tr class="odd">
+<td>DRep application received</td>
+<td>Board</td>
+</tr>
+<tr class="even">
+<td>DRep admitted/rejected</td>
+<td>The applicant</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="20-configurable-platform-parameters">20. Configurable Platform
+Parameters</h2>
+<p>Single source of truth for all configuration. All editable by the
+board via the platform's admin UI (which itself produces an
+<code>internal_proposal</code> for transparency, even if it doesn't
+require a vote for routine settings).</p>
+<table>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th>Default</th>
+<th>Used in</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>NUMBER_OF_ROUNDS_PER_BUDGET</code></td>
+<td>3</td>
+<td>Round planning</td>
+</tr>
+<tr class="even">
+<td><code>STAGES_REWARD_SPLIT_DV_PCT</code></td>
+<td>60</td>
+<td>D&amp;V vs milestones split</td>
+</tr>
+<tr class="odd">
+<td><code>BONUS_SHARE_DV_PCT</code></td>
+<td>30</td>
+<td>Within D&amp;V slice, fixed vs bonus</td>
+</tr>
+<tr class="even">
+<td><code>FILTER_REVIEWER_COUNT</code></td>
+<td>5</td>
+<td>Filtering</td>
+</tr>
+<tr class="odd">
+<td><code>FILTER_APPROVAL_VOTES</code></td>
+<td>3</td>
+<td>Filtering</td>
+</tr>
+<tr class="even">
+<td><code>MILESTONE_REVIEWER_COUNT</code></td>
+<td>3</td>
+<td>Milestones</td>
+</tr>
+<tr class="odd">
+<td><code>MILESTONE_APPROVAL_VOTES</code></td>
+<td>2</td>
+<td>Milestones</td>
+</tr>
+<tr class="even">
+<td><code>DV_APPROVAL_THRESHOLD_PCT</code></td>
+<td>67</td>
+<td>D&amp;V</td>
+</tr>
+<tr class="odd">
+<td><code>INTERNAL_DEFAULT_THRESHOLD_PCT</code></td>
+<td>67</td>
+<td>Internal</td>
+</tr>
+<tr class="even">
+<td><code>INTERNAL_IMPORTANT_THRESHOLD_PCT</code></td>
+<td>75</td>
+<td>Internal (sensitive)</td>
+</tr>
+<tr class="odd">
+<td><code>QUICK_POLL_PARTICIPATION_PCT</code></td>
+<td>51</td>
+<td>Quick poll</td>
+</tr>
+<tr class="even">
+<td><code>QUICK_POLL_DURATION_HOURS</code></td>
+<td>48</td>
+<td>Quick poll</td>
+</tr>
+<tr class="odd">
+<td><code>QUICK_POLL_MAX_EXTENSIONS</code></td>
+<td>3</td>
+<td>Quick poll</td>
+</tr>
+<tr class="even">
+<td><code>FEE_COMMERCIAL_PCT</code></td>
+<td>3</td>
+<td>Submission fees</td>
+</tr>
+<tr class="odd">
+<td><code>FEE_COMMERCIAL_CAP_ADA</code></td>
+<td>5,000</td>
+<td>Submission fees</td>
+</tr>
+<tr class="even">
+<td><code>FEE_OSS_PCT</code></td>
+<td>1</td>
+<td>Submission fees</td>
+</tr>
+<tr class="odd">
+<td><code>FEE_OSS_CAP_ADA</code></td>
+<td>1,000</td>
+<td>Submission fees</td>
+</tr>
+<tr class="even">
+<td><code>FEE_CAP_PER_ROUND_ADA</code></td>
+<td>50,000</td>
+<td>Filtering reward overflow</td>
+</tr>
+<tr class="odd">
+<td><code>MILESTONE_NOTIFICATION_DAYS_BEFORE_END</code></td>
+<td>3</td>
+<td>Milestones</td>
+</tr>
+<tr class="even">
+<td><code>MILESTONE_AUTO_EXTENSION_DAYS</code></td>
+<td>28</td>
+<td>Milestones</td>
+</tr>
+<tr class="odd">
+<td><code>MILESTONE_CHECK_PERIOD_DAYS</code></td>
+<td>10</td>
+<td>Milestones</td>
+</tr>
+<tr class="even">
+<td><code>MILESTONE_BOARD_EXTRA_EXTENSION_DAYS</code></td>
+<td>90</td>
+<td>Milestones</td>
+</tr>
+<tr class="odd">
+<td><code>PLEDGE_THRESHOLD_ADA</code></td>
+<td>0</td>
+<td>Pledge required threshold</td>
+</tr>
+<tr class="even">
+<td><code>PLEDGE_GRACE_DAYS</code></td>
+<td>14</td>
+<td>Pledge timeout</td>
+</tr>
+<tr class="odd">
+<td><code>MIN_OWN_VOTING_POWER_ADA</code></td>
+<td>1,000,000</td>
+<td>Admission gate</td>
+</tr>
+<tr class="even">
+<td><code>MIN_DELEGATORS</code></td>
+<td>20</td>
+<td>Admission gate</td>
+</tr>
+<tr class="odd">
+<td><code>MIN_DELEGATOR_STAKE_ADA</code></td>
+<td>50,000</td>
+<td>Admission gate</td>
+</tr>
+<tr class="even">
+<td><code>AVOID_PERIOD_MAX_DAYS_PER_YEAR</code></td>
+<td>42</td>
+<td>Avoid signaling</td>
+</tr>
+<tr class="odd">
+<td><code>MERIT_POINT_MAX</code></td>
+<td>200</td>
+<td>Merit cap</td>
+</tr>
+<tr class="even">
+<td><code>BOARD_REWARD_DEADLINE_DAYS</code></td>
+<td>30</td>
+<td>Merit penalty trigger</td>
+</tr>
+<tr class="odd">
+<td><code>ANCHOR_SCHEDULE_CRON</code></td>
+<td><code>0 2 * * *</code></td>
+<td>Daily anchoring</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="part-ii--technical-architecture">Part II — Technical
+Architecture</h1>
+<h2 id="21-technology-stack">21. Technology Stack</h2>
+<p>Pragmatic, mainstream choices. The selection rationale: maximize
+free-tier hosting, minimize integration custom code, and lean on
+libraries with active Cardano community support.</p>
+<h3 id="211-stack-overview">21.1 Stack overview</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Layer</th>
+<th>Choice</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Frontend</strong></td>
+<td><strong>Next.js 15 + React 19 + TypeScript + Tailwind CSS +
+shadcn/ui</strong></td>
+<td>Server components where useful; SSR for SEO of public proposals;
+well-supported Cardano wallet integration via existing libraries.</td>
+</tr>
+<tr class="even">
+<td><strong>Wallet integration</strong></td>
+<td><strong>MeshJS</strong> (<code>@meshsdk/core</code> +
+<code>@meshsdk/react</code>)</td>
+<td>Active Cardano-native SDK; supports CIP-30 wallets out of the box;
+handles signature verification helpers.</td>
+</tr>
+<tr class="odd">
+<td><strong>Backend</strong></td>
+<td><strong>NestJS</strong> (Node.js + TypeScript)</td>
+<td>Sharing types with frontend; mature DI/modules; great for REST +
+jobs. Alternative: tRPC for end-to-end type safety; FastAPI (Python) if
+you prefer Python.</td>
+</tr>
+<tr class="even">
+<td><strong>Database</strong></td>
+<td><strong>PostgreSQL 16</strong></td>
+<td>Mature, well-supported, JSON columns for flexible config,
+MERIT_LEDGER as table.</td>
+</tr>
+<tr class="odd">
+<td><strong>ORM</strong></td>
+<td><strong>Prisma</strong></td>
+<td>Excellent TypeScript DX; migrations clean; good with Postgres
+JSON.</td>
+</tr>
+<tr class="even">
+<td><strong>Job scheduler</strong></td>
+<td><strong>BullMQ</strong> on Redis</td>
+<td>Time-based transitions, retries, repeatable jobs (anchoring).</td>
+</tr>
+<tr class="odd">
+<td><strong>Cardano data</strong></td>
+<td><strong>Blockfrost</strong> (paid, primary) + <strong>Koios</strong>
+(free, fallback)</td>
+<td>UTxO lookups, TX confirmation, DRep on-chain state.</td>
+</tr>
+<tr class="even">
+<td><strong>Cardano tx building</strong></td>
+<td><strong>Lucid Evolution</strong></td>
+<td>Successor to Lucid; clean API; multisig support.</td>
+</tr>
+<tr class="odd">
+<td><strong>DRep on-chain</strong></td>
+<td><strong>CIP-95 wallets</strong> (Eternl, Lace, Yoroi 2025+)</td>
+<td>Native DRep ID exposure via
+<code>wallet.getRegisteredPubStakeKeys</code> etc.</td>
+</tr>
+<tr class="even">
+<td><strong>Email</strong></td>
+<td><strong>AWS SES</strong> or <strong>Resend</strong></td>
+<td>Cheap transactional email; Resend has nice developer API.</td>
+</tr>
+<tr class="odd">
+<td><strong>Telegram bot</strong></td>
+<td><strong>Telegraf</strong></td>
+<td>Standard Telegram bot library for Node.</td>
+</tr>
+<tr class="even">
+<td><strong>Object storage</strong></td>
+<td><strong>None in MVP</strong></td>
+<td>Markdown content lives in Postgres; large artifacts referenced by
+external URL only.</td>
+</tr>
+<tr class="odd">
+<td><strong>Hosting</strong></td>
+<td><strong>Fly.io</strong> or <strong>Railway</strong> (backend),
+<strong>Vercel</strong> (frontend), <strong>Neon</strong> or
+<strong>Supabase</strong> (Postgres)</td>
+<td>All have generous free tiers; production scaling later.</td>
+</tr>
+<tr class="even">
+<td><strong>Observability</strong></td>
+<td><strong>Sentry</strong> + <strong>OpenTelemetry</strong></td>
+<td>Errors and traces; Grafana Cloud free tier for metrics.</td>
+</tr>
+<tr class="odd">
+<td><strong>CI/CD</strong></td>
+<td><strong>GitHub Actions</strong></td>
+<td>Free for public repos.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="212-why-not-the-alternatives">21.2 Why not the alternatives</h3>
+<ul>
+<li><strong>Aiken/Plutus on-chain logic:</strong> Out of scope. The
+design intentionally puts logic off-chain (backend = source of truth).
+Aiken would only be needed if we wanted on-chain enforcement of voting
+rules — explicitly deferred.</li>
+<li><strong>GraphQL:</strong> REST is sufficient and faster to build.
+Frontend doesn't have wildly varying query shapes.</li>
+<li><strong>Cardano-CLI scripts:</strong> Lucid Evolution handles
+everything from the backend; no need to shell out.</li>
+<li><strong>MongoDB:</strong> This domain is fundamentally relational
+(proposals → votes → users → merit deltas → rewards). Postgres is the
+right fit.</li>
+</ul>
+<h3 id="213-repo-layout-proposed">21.3 Repo layout (proposed)</h3>
+<pre><code>drep-dao/
+├── apps/
+│   ├── web/                   # Next.js frontend
+│   └── api/                   # NestJS backend
+├── packages/
+│   ├── shared/                # Shared types, DTOs, constants
+│   ├── cardano/               # Cardano integration helpers (Lucid wrappers, anchor service)
+│   └── db/                    # Prisma schema, migrations, seed data
+├── infra/                     # IaC (terraform / fly.toml / vercel.json)
+├── docs/                      # This document + ADRs
+└── .github/workflows/         # CI</code></pre>
+<p>Monorepo with <strong>pnpm workspaces</strong> +
+<strong>Turborepo</strong> for build orchestration.</p>
+<hr />
+<h2 id="22-cardano-integration">22. Cardano Integration</h2>
+<h3 id="221-wallet-authentication-cip-30--cip-8">22.1 Wallet
+authentication (CIP-30 + CIP-8)</h3>
+<p>Login flow:</p>
+<ol type="1">
+<li>User clicks "Connect Wallet" in frontend</li>
+<li>MeshJS triggers CIP-30 <code>enable()</code> on the chosen wallet
+(Eternl/Lace/Yoroi/Nami)</li>
+<li>Backend issues a nonce: <code>POST /auth/nonce</code> → returns
+<code>{ nonce, expiresAt }</code> (5-min TTL)</li>
+<li>Frontend asks wallet to sign the nonce:
+<code>wallet.signData(stakeAddr, nonceMessage)</code> (CIP-8
+signing)</li>
+<li>Frontend posts the signature + nonce to backend:
+<code>POST /auth/verify</code></li>
+<li>Backend verifies CIP-8 signature against the stake key; on success,
+issues a session JWT</li>
+<li>Backend upserts a <code>user</code> row keyed by
+<code>stake_key_hash</code></li>
+</ol>
+<p>The session cookie is HTTP-only, SameSite=Lax, 7-day rolling expiry.
+Logout revokes the JWT via a denylist (Redis).</p>
+<h3 id="222-drep-identity-cip-95">22.2 DRep identity (CIP-95)</h3>
+<p>CIP-95-capable wallets expose:</p>
+<ul>
+<li><code>wallet.cip95.getPubDRepKey()</code> — the DRep public key</li>
+<li><code>wallet.cip95.getRegisteredPubStakeKeys()</code> — stake keys
+registered as DRep on-chain</li>
+</ul>
+<p>The platform stores both. When a DRep applies for admission, the
+backend verifies on-chain that this DRep ID is registered (via
+Blockfrost <code>/governance/dreps/{drep_id}</code>). The DRep's
+on-chain voting power (delegated stake) is fetched from
+<code>/governance/dreps/{drep_id}/delegators</code>.</p>
+<h3 id="223-multisig-wallet-3-of-5">22.3 Multisig wallet (3-of-5)</h3>
+<p>A <strong>native multisig</strong> (no Plutus script) is built using
+a <code>NativeScript</code> of type <code>atLeast</code>:</p>
+<pre><code>{
+  &quot;type&quot;: &quot;atLeast&quot;,
+  &quot;required&quot;: 3,
+  &quot;scripts&quot;: [
+    { &quot;type&quot;: &quot;sig&quot;, &quot;keyHash&quot;: &quot;&lt;board1&gt;&quot; },
+    { &quot;type&quot;: &quot;sig&quot;, &quot;keyHash&quot;: &quot;&lt;board2&gt;&quot; },
+    { &quot;type&quot;: &quot;sig&quot;, &quot;keyHash&quot;: &quot;&lt;board3&gt;&quot; },
+    { &quot;type&quot;: &quot;sig&quot;, &quot;keyHash&quot;: &quot;&lt;board4&gt;&quot; },
+    { &quot;type&quot;: &quot;sig&quot;, &quot;keyHash&quot;: &quot;&lt;board5&gt;&quot; }
+  ]
+}</code></pre>
+<p>The script address is the DAO Multisig address.</p>
+<p><strong>Signing workflow:</strong></p>
+<ol type="1">
+<li>Backend builds an unsigned TX using Lucid Evolution (e.g., a reward
+payout batch)</li>
+<li>Backend stores the TX CBOR in the DB and notifies all 5 board
+members</li>
+<li>Board members visit the platform, see "Pending TX" page, and click
+"Sign"</li>
+<li>Each click triggers their wallet to sign the CBOR (CIP-30
+<code>signTx</code>)</li>
+<li>Backend collects partial signatures; when 3 are gathered, it
+assembles the witness set and submits the TX</li>
+<li>Result (TX hash) is stored against the action that triggered it</li>
+</ol>
+<h3 id="224-reading-on-chain-state">22.4 Reading on-chain state</h3>
+<p>For each functional need:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Need</th>
+<th>API</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Verify submission fee TX</td>
+<td><code>blockfrost.txs(tx_hash)</code> + check output to fees address
++ amount + sender stake key</td>
+</tr>
+<tr class="even">
+<td>Verify pledge TX</td>
+<td>Same as above</td>
+</tr>
+<tr class="odd">
+<td>Read DRep voting power</td>
+<td><code>blockfrost.governance.dreps(drep_id)</code> + sum
+delegators</td>
+</tr>
+<tr class="even">
+<td>Read DRep delegator count</td>
+<td><code>blockfrost.governance.dreps(drep_id).delegators</code>
+(paginated)</td>
+</tr>
+<tr class="odd">
+<td>Get latest block hash (for randomness)</td>
+<td><code>blockfrost.blocks.latest()</code></td>
+</tr>
+<tr class="even">
+<td>Confirm multisig TX submission</td>
+<td><code>blockfrost.txs(tx_hash)</code> polling until ≥ 2
+confirmations</td>
+</tr>
+<tr class="odd">
+<td>Detect pledge address inflow</td>
+<td>Webhook from Blockfrost (paid plan) or polling job</td>
+</tr>
+</tbody>
+</table>
+<p>Koios is the fallback for free reads when Blockfrost is rate-limited;
+we abstract behind a <code>CardanoQueryService</code> interface.</p>
+<hr />
+<h2 id="23-on-chain-anchoring">23. On-Chain Anchoring</h2>
+<h3 id="231-what-gets-anchored">23.1 What gets anchored</h3>
+<p>Per decision #15, anchored items are:</p>
+<ol type="1">
+<li><strong>Ready proposals</strong> — when a proposal moves from
+<code>DRAFT/PENDING</code> to <code>ACTIVE</code> (filtering or
+D&amp;V), anchor <code>hash(proposal_content + metadata)</code></li>
+<li><strong>Vote tallies</strong> — once per day, anchor
+<code>hash(all_votes_cast_today)</code>; also a one-shot anchor at
+vote-end with the final tally hash</li>
+<li><strong>Voting power snapshots</strong> — at every snapshot event,
+anchor <code>hash(snapshot)</code> (one anchor per proposal
+vote-start)</li>
+<li><strong>Merit ledger</strong> — once per day, anchor
+<code>hash(all_merit_deltas_today)</code></li>
+<li><strong>Reward payouts</strong> — already on-chain (the multisig TX
+itself)</li>
+<li><strong>Configuration changes</strong> — anchor a "configuration
+change" record whenever the board updates a parameter</li>
+</ol>
+<h3 id="232-anchor-metadata-schema">23.2 Anchor metadata schema</h3>
+<p>Cardano transaction metadata is JSON under a numeric label. We use
+label <strong><code>80808080</code></strong> (reserved for the DAO).</p>
+<pre class="json"><code>{
+  &quot;80808080&quot;: {
+    &quot;v&quot;: 1,
+    &quot;k&quot;: &quot;vote_tally_daily&quot;,
+    &quot;r&quot;: &quot;round_3&quot;,
+    &quot;p&quot;: &quot;proposal_uuid_or_null&quot;,
+    &quot;h&quot;: &quot;0x&lt;merkle_root_or_sha256&gt;&quot;,
+    &quot;ts&quot;: &quot;2026-05-20T02:00:00Z&quot;,
+    &quot;u&quot;: &quot;https://dao.example/verify/&lt;id&gt;&quot;
+  }
+}</code></pre>
+<p>Fields:</p>
+<ul>
+<li><code>v</code> — schema version</li>
+<li><code>k</code> — anchor kind (<code>proposal_ready</code>,
+<code>vote_tally_daily</code>, <code>vote_tally_final</code>,
+<code>power_snapshot</code>, <code>merit_daily</code>,
+<code>config_change</code>)</li>
+<li><code>r</code> — round id (if applicable)</li>
+<li><code>p</code> — proposal id (if applicable)</li>
+<li><code>h</code> — the hash being anchored</li>
+<li><code>ts</code> — timestamp</li>
+<li><code>u</code> — verification URL on the platform</li>
+</ul>
+<h3 id="233-hashing-scheme">23.3 Hashing scheme</h3>
+<p>For collections (vote tallies, merit deltas), we compute a
+<strong>Merkle root</strong> so a DRep can produce an inclusion proof
+for their own vote without revealing other votes' details.</p>
+<p>For single objects (proposal content), a simple SHA-256 over the
+canonicalized JSON is sufficient.</p>
+<h3 id="234-anchoring-transaction">23.4 Anchoring transaction</h3>
+<p>Anchoring TXs are sent <strong>from a hot wallet operated by the
+backend</strong>, <em>not</em> from the multisig. Reason: anchoring
+happens daily and would require board signatures otherwise, which is
+impractical.</p>
+<p>The hot wallet holds a small operating balance (~50 ADA, refilled
+monthly by the multisig). Each anchor TX costs ~0.17–0.20 ADA. The hot
+wallet is configured with a single signer key; if it's compromised, the
+worst-case is fake anchors — which DReps would catch via the
+verification UI because the hashes wouldn't match the platform's
+data.</p>
+<p>For higher security, the hot wallet's signer could be a 2-of-3 quorum
+among board members (still operationally tolerable for daily TXs).</p>
+<h3 id="235-verification-ux">23.5 Verification UX</h3>
+<p>The platform exposes <code>GET /verify/&lt;anchor_id&gt;</code>
+showing:</p>
+<ul>
+<li>The anchored data (preimage)</li>
+<li>The hash</li>
+<li>The Cardano TX hash containing the anchor</li>
+<li>A link to a block explorer (cexplorer.io / cardanoscan.io)</li>
+<li>For collections: a search box to verify your own vote with a Merkle
+inclusion proof</li>
+</ul>
+<p>Any DRep can independently recompute the hash from the displayed
+preimage and check it against the TX metadata.</p>
+<hr />
+<h2 id="24-database-schema">24. Database Schema</h2>
+<p>PostgreSQL, managed via Prisma. Tables grouped by domain.</p>
+<h3 id="241-identity-and-access">24.1 Identity and access</h3>
+<pre class="sql"><code>-- Cardano wallet-authenticated users (everyone who logs in)
+CREATE TABLE app_user (
+  id              UUID PRIMARY KEY,
+  stake_key_hash  TEXT UNIQUE NOT NULL,
+  stake_address   TEXT NOT NULL,
+  display_name    TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- DRep profile (created after admission)
+CREATE TABLE drep (
+  id                    UUID PRIMARY KEY,
+  user_id               UUID UNIQUE REFERENCES app_user(id),
+  drep_id_onchain       TEXT UNIQUE NOT NULL,   -- CIP-95 DRep ID
+  status                TEXT NOT NULL,          -- PENDING_ADMISSION, ADMITTED, REMOVED
+  bio                   TEXT,
+  socials               JSONB,
+  contact               JSONB,
+  subcategory_ids       TEXT[],
+  kyc_optin             BOOLEAN DEFAULT FALSE,
+  calls_optin           BOOLEAN DEFAULT FALSE,
+  admission_call_optin  BOOLEAN DEFAULT FALSE,
+  admitted_at           TIMESTAMPTZ,
+  removed_at            TIMESTAMPTZ
+);
+
+-- Board membership (a DRep can be elevated to board)
+CREATE TABLE board_membership (
+  id          UUID PRIMARY KEY,
+  drep_id     UUID REFERENCES drep(id),
+  started_at  TIMESTAMPTZ NOT NULL,
+  ended_at    TIMESTAMPTZ
+);
+
+-- Expert (non-DRep) — for milestone reviewing only
+CREATE TABLE expert (
+  id            UUID PRIMARY KEY,
+  user_id       UUID REFERENCES app_user(id),
+  display_name  TEXT NOT NULL,
+  bio           TEXT,
+  subcategory_ids TEXT[],
+  approved_by_board BOOLEAN DEFAULT FALSE
+);</code></pre>
+<h3 id="242-configuration-and-taxonomy">24.2 Configuration and
+taxonomy</h3>
+<pre class="sql"><code>-- Singleton-row table of platform-level configurable parameters
+CREATE TABLE platform_config (
+  key         TEXT PRIMARY KEY,
+  value       JSONB NOT NULL,        -- typed JSON value
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_by  UUID REFERENCES app_user(id)
+);
+
+-- Configurable subcategories (e.g., DeFi, Governance, Marketing)
+CREATE TABLE subcategory (
+  id       TEXT PRIMARY KEY,         -- slug
+  label    TEXT NOT NULL,
+  active   BOOLEAN DEFAULT TRUE,
+  sort_idx INT DEFAULT 0
+);</code></pre>
+<h3 id="243-rounds-and-categories">24.3 Rounds and categories</h3>
+<pre class="sql"><code>CREATE TABLE round (
+  id              UUID PRIMARY KEY,
+  number          INT UNIQUE NOT NULL,
+  name            TEXT,
+  status          TEXT NOT NULL,    -- PREPARATION, FILTERING, DV, FUNDING, CLOSED
+  budget_ada      BIGINT NOT NULL,  -- in Lovelace
+  rewards_pool_ada BIGINT NOT NULL,
+  multisig_address TEXT NOT NULL,
+  intersect_tx_hash TEXT,           -- TW receipt
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  ended_at        TIMESTAMPTZ
+);
+
+CREATE TABLE round_category (
+  id              UUID PRIMARY KEY,
+  round_id        UUID REFERENCES round(id),
+  name            TEXT NOT NULL,
+  type            TEXT NOT NULL,    -- GRANT or RFP
+  description     TEXT,
+  conditions      TEXT,
+  min_ada         BIGINT,
+  max_ada         BIGINT,
+  allocated_ada   BIGINT NOT NULL
+);
+
+CREATE TABLE round_drep_eligibility (
+  round_id   UUID REFERENCES round(id),
+  drep_id    UUID REFERENCES drep(id),
+  added_at   TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (round_id, drep_id)
+);
+
+CREATE TABLE round_schedule (
+  round_id        UUID REFERENCES round(id),
+  stage_key       TEXT NOT NULL,    -- &#39;submission&#39;, &#39;filter_fb1&#39;, &#39;filter_edit&#39;, ...
+  starts_at       TIMESTAMPTZ NOT NULL,
+  ends_at         TIMESTAMPTZ NOT NULL,
+  prolonged_from  TIMESTAMPTZ,
+  PRIMARY KEY (round_id, stage_key)
+);</code></pre>
+<h3 id="244-proposals">24.4 Proposals</h3>
+<pre class="sql"><code>CREATE TABLE proposal (
+  id                       UUID PRIMARY KEY,
+  type                     TEXT NOT NULL,   -- FUNDING or INTERNAL
+  status                   TEXT NOT NULL,   -- DRAFT, PENDING, ACTIVE, APPROVED, REJECTED, COMPLETE, FAILED
+  stage                    TEXT,            -- FILTERING, DV, FUNDING, VOTING (internal)
+  submitter_user_id        UUID REFERENCES app_user(id),
+  submitter_drep_id        UUID REFERENCES drep(id),
+  title                    TEXT NOT NULL,
+  content_md               TEXT NOT NULL,
+  category_id              UUID REFERENCES round_category(id),
+  subcategory_ids          TEXT[],
+  round_id                 UUID REFERENCES round(id),
+  -- funding
+  is_commercial            BOOLEAN,
+  requested_amount_ada     BIGINT,
+  submission_fee_ada       BIGINT,
+  submission_fee_tx_hash   TEXT,
+  pledge_amount_ada        BIGINT,
+  pledge_return_method     TEXT,  -- LAST_MILESTONE or PER_MILESTONE
+  pledge_tx_hash           TEXT,
+  team_info                JSONB,
+  cost_breakdown_md        TEXT,
+  revenue_sharing          JSONB,
+  -- internal
+  internal_type            TEXT,  -- INSTRUCTIVE, INFORMATIVE, POLL
+  voters_scope             TEXT,  -- DREPS_ONLY, BOARD_ONLY, BOTH
+  actors                   JSONB,
+  delivery_date            TIMESTAMPTZ,
+  poll_options             JSONB,
+  threshold_kind           TEXT,
+  -- common
+  voting_type              TEXT NOT NULL,   -- ONE_PERSON_ONE_VOTE or BALANCED
+  approval_threshold_pct   NUMERIC(5,2),
+  voting_start_at          TIMESTAMPTZ,
+  voting_end_at            TIMESTAMPTZ,
+  result_finalized_at      TIMESTAMPTZ,
+  version                  INT DEFAULT 1,
+  created_at               TIMESTAMPTZ DEFAULT NOW(),
+  updated_at               TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE proposal_version (
+  id               UUID PRIMARY KEY,
+  proposal_id      UUID REFERENCES proposal(id),
+  version          INT NOT NULL,
+  content_md       TEXT NOT NULL,
+  edited_by        UUID REFERENCES app_user(id),
+  edited_at        TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (proposal_id, version)
+);
+
+CREATE TABLE milestone (
+  id            UUID PRIMARY KEY,
+  proposal_id   UUID REFERENCES proposal(id),
+  idx           INT NOT NULL,
+  description   TEXT,
+  amount_ada    BIGINT NOT NULL,
+  deadline_at   TIMESTAMPTZ,
+  status        TEXT NOT NULL,   -- NOT_STARTED, POA_SUBMITTED, IN_REVIEW, APPROVED, REJECTED
+  closed_at     TIMESTAMPTZ
+);
+
+CREATE TABLE milestone_poa (
+  id           UUID PRIMARY KEY,
+  milestone_id UUID REFERENCES milestone(id),
+  content_md   TEXT,
+  submitted_at TIMESTAMPTZ DEFAULT NOW(),
+  attempt      INT NOT NULL
+);</code></pre>
+<h3 id="245-reviewer-assignments">24.5 Reviewer assignments</h3>
+<pre class="sql"><code>CREATE TABLE filter_assignment (
+  id           UUID PRIMARY KEY,
+  proposal_id  UUID REFERENCES proposal(id),
+  drep_id      UUID REFERENCES drep(id),
+  assigned_at  TIMESTAMPTZ DEFAULT NOW(),
+  accepted_at  TIMESTAMPTZ,
+  released_at  TIMESTAMPTZ,        -- if reassigned
+  replaced_by  UUID REFERENCES drep(id)
+);
+
+CREATE TABLE milestone_assignment (
+  id           UUID PRIMARY KEY,
+  milestone_id UUID REFERENCES milestone(id),
+  reviewer_drep_id  UUID REFERENCES drep(id),
+  reviewer_expert_id UUID REFERENCES expert(id),
+  assigned_at  TIMESTAMPTZ DEFAULT NOW(),
+  confirmed_by_board_at TIMESTAMPTZ,
+  released_at  TIMESTAMPTZ
+);</code></pre>
+<h3 id="246-votes-and-snapshots">24.6 Votes and snapshots</h3>
+<pre class="sql"><code>CREATE TABLE vote_snapshot (
+  id                  UUID PRIMARY KEY,
+  proposal_id         UUID REFERENCES proposal(id),
+  taken_at            TIMESTAMPTZ DEFAULT NOW(),
+  anchor_id           UUID                              -- FK to anchor; null until anchored
+);
+
+CREATE TABLE vote_snapshot_entry (
+  snapshot_id         UUID REFERENCES vote_snapshot(id),
+  drep_id             UUID REFERENCES drep(id),
+  stake_lovelace      BIGINT NOT NULL,
+  merit_points        INT NOT NULL,
+  base_power          NUMERIC(12,4),
+  merit_multiplier    NUMERIC(12,4),
+  final_power         NUMERIC(12,4),
+  PRIMARY KEY (snapshot_id, drep_id)
+);
+
+CREATE TABLE vote (
+  id            UUID PRIMARY KEY,
+  proposal_id   UUID REFERENCES proposal(id),
+  drep_id       UUID REFERENCES drep(id),
+  milestone_id  UUID REFERENCES milestone(id),     -- nullable; set for milestone votes
+  choice        TEXT NOT NULL,    -- YES, NO, ABSTAIN
+  rationale     TEXT,
+  cast_at       TIMESTAMPTZ DEFAULT NOW(),
+  superseded_by UUID REFERENCES vote(id)           -- vote changes
+);
+
+CREATE TABLE quick_poll (
+  id           UUID PRIMARY KEY,
+  round_id     UUID REFERENCES round(id),
+  category_id  UUID REFERENCES round_category(id),
+  candidates   UUID[],                          -- proposal ids tied
+  starts_at    TIMESTAMPTZ,
+  ends_at      TIMESTAMPTZ,
+  extensions   INT DEFAULT 0,
+  status       TEXT,                             -- PENDING_BOARD, ACTIVE, RESOLVED, FAILED
+  winner_id    UUID REFERENCES proposal(id)
+);
+
+CREATE TABLE quick_poll_vote (
+  quick_poll_id UUID REFERENCES quick_poll(id),
+  drep_id       UUID REFERENCES drep(id),
+  choice        UUID REFERENCES proposal(id),   -- which tied proposal they chose
+  cast_at       TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (quick_poll_id, drep_id)
+);</code></pre>
+<h3 id="247-merit-ledger">24.7 Merit ledger</h3>
+<pre class="sql"><code>CREATE TABLE merit_ledger (
+  id           UUID PRIMARY KEY,
+  drep_id      UUID REFERENCES drep(id),
+  delta        NUMERIC(6,2) NOT NULL,        -- e.g. +1, -1, +0.5, +10
+  reason_code  TEXT NOT NULL,                -- e.g. &#39;DV_VOTE&#39;, &#39;FILTER_COMPLETE&#39;, &#39;MISSED_DV&#39;, &#39;BOARD_ROUND_START&#39;
+  reference_id UUID,                          -- proposal_id, milestone_id, round_id, etc.
+  occurred_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX merit_ledger_drep_idx ON merit_ledger(drep_id, occurred_at);
+
+-- Computed view for current balance
+CREATE VIEW drep_merit_current AS
+  SELECT drep_id, GREATEST(-200, LEAST(200, SUM(delta))) AS current_points
+  FROM merit_ledger
+  GROUP BY drep_id;</code></pre>
+<h3 id="248-rewards">24.8 Rewards</h3>
+<pre class="sql"><code>CREATE TABLE reward_calculation (
+  id            UUID PRIMARY KEY,
+  round_id      UUID REFERENCES round(id),
+  kind          TEXT NOT NULL,     -- FILTER, DV_FIXED, DV_BONUS, MILESTONE
+  pool_ada      BIGINT NOT NULL,
+  total_units   NUMERIC,           -- total cast votes / total weight, etc.
+  computed_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE reward_entry (
+  id                UUID PRIMARY KEY,
+  reward_calculation_id UUID REFERENCES reward_calculation(id),
+  drep_id           UUID REFERENCES drep(id),
+  amount_ada        BIGINT NOT NULL,
+  paid_in_tx        TEXT,            -- multisig TX hash once paid
+  paid_at           TIMESTAMPTZ
+);</code></pre>
+<h3 id="249-treasury-and-cardano">24.9 Treasury and Cardano</h3>
+<pre class="sql"><code>CREATE TABLE multisig_action (
+  id            UUID PRIMARY KEY,
+  kind          TEXT NOT NULL,   -- REWARD_PAYOUT, PROJECT_FUNDING, PLEDGE_RETURN, OPS, LEFTOVER_RETURN
+  tx_cbor       TEXT,            -- unsigned tx cbor
+  tx_hash       TEXT,            -- once submitted
+  status        TEXT NOT NULL,   -- PENDING_SIGS, BROADCASTED, CONFIRMED, FAILED
+  amount_ada    BIGINT,
+  description   TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE multisig_signature (
+  id            UUID PRIMARY KEY,
+  action_id     UUID REFERENCES multisig_action(id),
+  board_drep_id UUID REFERENCES drep(id),
+  witness_cbor  TEXT NOT NULL,
+  signed_at     TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (action_id, board_drep_id)
+);
+
+CREATE TABLE cardano_tx_observation (
+  tx_hash       TEXT PRIMARY KEY,
+  block_height  BIGINT,
+  confirmed_at  TIMESTAMPTZ,
+  metadata      JSONB,
+  observed_at   TIMESTAMPTZ DEFAULT NOW()
+);</code></pre>
+<h3 id="2410-anchoring">24.10 Anchoring</h3>
+<pre class="sql"><code>CREATE TABLE anchor (
+  id            UUID PRIMARY KEY,
+  kind          TEXT NOT NULL,
+  round_id      UUID,
+  proposal_id   UUID,
+  hash          TEXT NOT NULL,
+  preimage      JSONB,           -- the canonical data being hashed
+  tx_hash       TEXT,            -- Cardano TX hash carrying the anchor metadata
+  metadata_label INT NOT NULL,   -- 80808080
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  submitted_at  TIMESTAMPTZ,
+  confirmed_at  TIMESTAMPTZ
+);
+
+CREATE INDEX anchor_kind_idx ON anchor(kind, created_at);</code></pre>
+<h3 id="2411-communication-and-notifications">24.11 Communication and
+notifications</h3>
+<pre class="sql"><code>CREATE TABLE comment (
+  id            UUID PRIMARY KEY,
+  proposal_id   UUID REFERENCES proposal(id),
+  parent_id     UUID REFERENCES comment(id),
+  author_user_id UUID REFERENCES app_user(id),
+  content_md    TEXT NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at    TIMESTAMPTZ
+);
+
+CREATE TABLE private_thread (
+  id            UUID PRIMARY KEY,
+  proposal_id   UUID REFERENCES proposal(id),
+  kind          TEXT NOT NULL    -- SUBMITTER_BOARD, DREP_BOARD_SHARED
+);
+
+CREATE TABLE private_message (
+  id            UUID PRIMARY KEY,
+  thread_id     UUID REFERENCES private_thread(id),
+  author_user_id UUID REFERENCES app_user(id),
+  content_md    TEXT NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE notification (
+  id            UUID PRIMARY KEY,
+  user_id       UUID REFERENCES app_user(id),
+  kind          TEXT NOT NULL,
+  payload       JSONB NOT NULL,
+  channels_sent TEXT[],        -- which channels succeeded
+  read_at       TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE notification_preference (
+  user_id       UUID PRIMARY KEY REFERENCES app_user(id),
+  in_app        BOOLEAN DEFAULT TRUE,
+  email         BOOLEAN DEFAULT TRUE,
+  email_addr    TEXT,
+  telegram      BOOLEAN DEFAULT FALSE,
+  telegram_chat_id TEXT
+);</code></pre>
+<h3 id="2412-avoid-periods-and-recommendations">24.12 Avoid periods and
+recommendations</h3>
+<pre class="sql"><code>CREATE TABLE drep_avoid_period (
+  id          UUID PRIMARY KEY,
+  drep_id     UUID REFERENCES drep(id),
+  starts_at   TIMESTAMPTZ NOT NULL,
+  ends_at     TIMESTAMPTZ NOT NULL,
+  reason      TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE drep_recommendation (
+  id              UUID PRIMARY KEY,
+  recommended_drep_id UUID REFERENCES drep(id),       -- the applicant
+  recommender_drep_id UUID REFERENCES drep(id),       -- existing DRep vouching
+  note            TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);</code></pre>
+<hr />
+<h2 id="25-api-surface">25. API Surface</h2>
+<p>REST over HTTPS. JSON bodies. JWT session cookies for auth. Versioned
+under <code>/api/v1</code>. Read-only endpoints are open; write
+endpoints require an authenticated session.</p>
+<h3 id="251-authentication">25.1 Authentication</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>POST</td>
+<td><code>/auth/nonce</code></td>
+<td>Issue a signing nonce for wallet login</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/auth/verify</code></td>
+<td>Verify CIP-8 signature, issue session JWT</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/auth/logout</code></td>
+<td>Revoke session</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/auth/me</code></td>
+<td>Current user, roles, DRep status</td>
+</tr>
+</tbody>
+</table>
+<h3 id="252-public-read-no-auth">25.2 Public read (no auth)</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>GET</td>
+<td><code>/rounds</code></td>
+<td>List all rounds with status and stage</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/rounds/:id</code></td>
+<td>Round detail (categories, schedule, eligible DReps)</td>
+</tr>
+<tr class="odd">
+<td>GET</td>
+<td><code>/rounds/:id/proposals</code></td>
+<td>All proposals in a round, filterable by status/category</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/proposals/:id</code></td>
+<td>Proposal detail (current version + comments)</td>
+</tr>
+<tr class="odd">
+<td>GET</td>
+<td><code>/proposals/:id/versions</code></td>
+<td>Edit history</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/proposals/:id/votes</code></td>
+<td>Vote tally (per choice, per DRep with FinalPower)</td>
+</tr>
+<tr class="odd">
+<td>GET</td>
+<td><code>/proposals/:id/milestones</code></td>
+<td>Milestones with status</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/internal-proposals</code></td>
+<td>List internal proposals</td>
+</tr>
+<tr class="odd">
+<td>GET</td>
+<td><code>/internal-proposals/:id</code></td>
+<td>Internal proposal detail</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/dreps</code></td>
+<td>All admitted DReps with current voting power + merit</td>
+</tr>
+<tr class="odd">
+<td>GET</td>
+<td><code>/dreps/:id</code></td>
+<td>DRep profile + voting history</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/board</code></td>
+<td>Current board members</td>
+</tr>
+<tr class="odd">
+<td>GET</td>
+<td><code>/verify/anchor/:id</code></td>
+<td>Anchor verification page data</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/config</code></td>
+<td>Public-readable platform parameters</td>
+</tr>
+</tbody>
+</table>
+<h3 id="253-submitters">25.3 Submitters</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>POST</td>
+<td><code>/proposals</code></td>
+<td>Create draft funding proposal</td>
+</tr>
+<tr class="even">
+<td>PATCH</td>
+<td><code>/proposals/:id</code></td>
+<td>Edit draft / edit during allowed window</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/proposals/:id/submit</code></td>
+<td>Submit (requires fee TX hash)</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/proposals/:id/pledge</code></td>
+<td>Submit pledge TX hash</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/proposals/:id/milestones/:idx/poa</code></td>
+<td>Submit Proof of Achievement</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/proposals/:id/comments</code></td>
+<td>Post a public comment</td>
+</tr>
+<tr class="odd">
+<td>GET</td>
+<td><code>/me/proposals</code></td>
+<td>My proposals (drafts, active, history)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="254-dreps">25.4 DReps</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>POST</td>
+<td><code>/me/drep-application</code></td>
+<td>Submit DRep admission form</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/me/drep</code></td>
+<td>My DRep profile</td>
+</tr>
+<tr class="odd">
+<td>PATCH</td>
+<td><code>/me/drep</code></td>
+<td>Update bio / categories / contact</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/me/filter-optin</code></td>
+<td>Opt into the filtering pool</td>
+</tr>
+<tr class="odd">
+<td>DELETE</td>
+<td><code>/me/filter-optin</code></td>
+<td>Opt out</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/me/milestone-review-optin</code></td>
+<td>Opt into milestone review pool</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/me/avoid-period</code></td>
+<td>Signal an upcoming avoid period</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/me/assignments</code></td>
+<td>My current filter / milestone assignments</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/assignments/filter/:id/accept</code></td>
+<td>Accept a filter assignment</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/assignments/filter/:id/decline</code></td>
+<td>Decline (triggers reassignment)</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/proposals/:id/votes</code></td>
+<td>Cast / change a vote</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/quick-polls/:id/votes</code></td>
+<td>Cast a quick-poll vote</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/internal-proposals</code></td>
+<td>Submit an internal proposal</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/me/rewards</code></td>
+<td>My pending and historical rewards</td>
+</tr>
+<tr class="odd">
+<td>GET</td>
+<td><code>/me/merit</code></td>
+<td>My merit ledger</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/me/notifications</code></td>
+<td>My notifications</td>
+</tr>
+</tbody>
+</table>
+<h3 id="255-board-elevated">25.5 Board (elevated)</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>POST</td>
+<td><code>/admin/rounds</code></td>
+<td>Create round</td>
+</tr>
+<tr class="even">
+<td>PATCH</td>
+<td><code>/admin/rounds/:id</code></td>
+<td>Update configuration (categories, periods, eligible DReps)</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/admin/rounds/:id/start-stage/:stage</code></td>
+<td>Manually transition</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/admin/rounds/:id/prolong</code></td>
+<td>Prolong a period (auto-shifts downstream)</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/admin/drep-applications/:id/vote</code></td>
+<td>Board vote on DRep admission</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/admin/dreps/:id/propose-removal</code></td>
+<td>Initiate removal proposal</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/admin/proposals/:id/confirm-fee</code></td>
+<td>Manually confirm a fee payment (override)</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/admin/proposals/:id/confirm-pledge</code></td>
+<td>Manually confirm a pledge payment (override)</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/admin/proposals/:id/terminate</code></td>
+<td>Mark proposal FAILED</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/admin/milestones/:id/reassign</code></td>
+<td>Reassign a reviewer</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/admin/milestones/:id/extend</code></td>
+<td>Grant extension beyond auto-extension</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/admin/quick-polls/:id/confirm-launch</code></td>
+<td>One-click confirm for auto-detected ties</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/admin/rewards/:id/prepare-payout</code></td>
+<td>Build the multisig TX for a reward batch</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/admin/multisig-actions/:id/sign</code></td>
+<td>Submit board member's witness</td>
+</tr>
+<tr class="odd">
+<td>POST</td>
+<td><code>/admin/multisig-actions/:id/broadcast</code></td>
+<td>Submit when 3 sigs collected</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/admin/dashboard</code></td>
+<td>Pending actions, calendar of stages, reconciliation status</td>
+</tr>
+<tr class="odd">
+<td>PATCH</td>
+<td><code>/admin/config/:key</code></td>
+<td>Update a platform parameter</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/admin/subcategories</code></td>
+<td>Add a subcategory</td>
+</tr>
+<tr class="odd">
+<td>PATCH</td>
+<td><code>/admin/subcategories/:id</code></td>
+<td>Edit / deactivate</td>
+</tr>
+<tr class="even">
+<td>POST</td>
+<td><code>/admin/experts</code></td>
+<td>Approve an expert</td>
+</tr>
+</tbody>
+</table>
+<h3 id="256-webhooks--internal">25.6 Webhooks / internal</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>POST</td>
+<td><code>/internal/cardano/tx-confirmed</code></td>
+<td>Blockfrost webhook (paid plan)</td>
+</tr>
+<tr class="even">
+<td>GET</td>
+<td><code>/internal/healthz</code></td>
+<td>Health check</td>
+</tr>
+<tr class="odd">
+<td>GET</td>
+<td><code>/internal/metrics</code></td>
+<td>Prometheus metrics</td>
+</tr>
+</tbody>
+</table>
+<h3 id="257-standard-conventions">25.7 Standard conventions</h3>
+<ul>
+<li>Pagination via <code>?cursor=</code> and <code>?limit=</code> (max
+100)</li>
+<li>Filtering via query params
+(<code>?status=ACTIVE&amp;category=Governance</code>)</li>
+<li>Errors as RFC 7807 problem details</li>
+<li>Rate limiting: 60 req/min per IP for unauth, 600 req/min per user
+for auth, no limit for board</li>
+<li>All write endpoints return the resulting resource (no separate GET
+needed)</li>
+<li>All times in ISO-8601 UTC</li>
+</ul>
+<hr />
+<h2 id="26-background-jobs-and-scheduler">26. Background Jobs and
+Scheduler</h2>
+<p>BullMQ on Redis. Three job types: <strong>scheduled</strong>
+(cron-style), <strong>delayed</strong> (single-fire after N seconds),
+and <strong>on-demand</strong> (enqueued by API handlers).</p>
+<h3 id="261-scheduled-jobs">26.1 Scheduled jobs</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Job</th>
+<th>Schedule</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>stage-transition-check</code></td>
+<td>every 5 minutes</td>
+<td>Detect periods that have ended; advance stage; trigger downstream
+actions</td>
+</tr>
+<tr class="even">
+<td><code>voting-deadline-check</code></td>
+<td>every 5 minutes</td>
+<td>Check D&amp;V and milestone deadlines; auto-extend if needed; alert
+board</td>
+</tr>
+<tr class="odd">
+<td><code>cardano-tx-poller</code></td>
+<td>every 30 seconds</td>
+<td>Poll pending submission-fee and pledge TX hashes for
+confirmation</td>
+</tr>
+<tr class="even">
+<td><code>cardano-balance-recon</code></td>
+<td>daily 01:00 UTC</td>
+<td>Reconcile DAO multisig on-chain balance against DB ledger</td>
+</tr>
+<tr class="odd">
+<td><code>daily-anchor-vote-tallies</code></td>
+<td>daily 02:00 UTC</td>
+<td>Anchor <code>hash(yesterday's votes)</code> to Cardano</td>
+</tr>
+<tr class="even">
+<td><code>daily-anchor-merit</code></td>
+<td>daily 02:10 UTC</td>
+<td>Anchor <code>hash(yesterday's merit deltas)</code></td>
+</tr>
+<tr class="odd">
+<td><code>notification-digest-email</code></td>
+<td>daily 08:00 UTC</td>
+<td>Email digest of in-app notifications for users without per-event
+email</td>
+</tr>
+<tr class="even">
+<td><code>pledge-grace-check</code></td>
+<td>daily 00:00 UTC</td>
+<td>Check if pledge grace period expired; alert board to act</td>
+</tr>
+<tr class="odd">
+<td><code>milestone-notice-3-2-1</code></td>
+<td>daily 00:00 UTC</td>
+<td>Send 3-day / 2-day / 1-day reminders before milestone deadlines</td>
+</tr>
+<tr class="even">
+<td><code>board-reward-deadline-check</code></td>
+<td>weekly</td>
+<td>Flag boards that haven't distributed rewards within 30 days</td>
+</tr>
+<tr class="odd">
+<td><code>avoid-period-cleanup</code></td>
+<td>hourly</td>
+<td>Activate/deactivate avoid periods based on time</td>
+</tr>
+</tbody>
+</table>
+<h3 id="262-delayed-jobs">26.2 Delayed jobs</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Job</th>
+<th>Triggered by</th>
+<th>Delay</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>filter-assignment-timeout</code></td>
+<td>filter assignment created</td>
+<td>48 hours — reassign if not accepted</td>
+</tr>
+<tr class="even">
+<td><code>quick-poll-end-check</code></td>
+<td>quick poll launched</td>
+<td>end_at − now</td>
+</tr>
+<tr class="odd">
+<td><code>milestone-period-end</code></td>
+<td>POA submitted</td>
+<td><code>MILESTONE_CHECK_PERIOD_DAYS</code></td>
+</tr>
+<tr class="even">
+<td><code>voting-period-end</code></td>
+<td>voting started</td>
+<td>end_at − now</td>
+</tr>
+</tbody>
+</table>
+<h3 id="263-on-demand-jobs">26.3 On-demand jobs</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Job</th>
+<th>Triggered by</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>compute-rewards</code></td>
+<td>board action / stage end</td>
+<td>Compute reward entries for a calculation kind</td>
+</tr>
+<tr class="even">
+<td><code>prepare-multisig-tx</code></td>
+<td>board action</td>
+<td>Build TX CBOR for a batch payout</td>
+</tr>
+<tr class="odd">
+<td><code>submit-anchor</code></td>
+<td>hash-able event</td>
+<td>Build and broadcast metadata TX (hot wallet)</td>
+</tr>
+<tr class="even">
+<td><code>send-notification</code></td>
+<td>many events</td>
+<td>Dispatch to in-app / email / Telegram</td>
+</tr>
+<tr class="odd">
+<td><code>random-draw-reviewers</code></td>
+<td>submission stage end</td>
+<td>Run category-match + random draw for all proposals</td>
+</tr>
+</tbody>
+</table>
+<h3 id="264-idempotency-and-retries">26.4 Idempotency and retries</h3>
+<ul>
+<li>Every job is keyed by a deterministic id
+(<code>{kind}:{reference_id}:{date}</code>) and the queue rejects
+duplicates within 24h</li>
+<li>3 retries with exponential backoff (1m, 5m, 30m) for transient
+failures</li>
+<li>Permanent failures go to a dead-letter queue; on-call (the board) is
+alerted via email</li>
+<li>Cardano TX submission is the most failure-prone path; we use Lucid's
+retry helpers + manual board action as fallback</li>
+</ul>
+<hr />
+<h1 id="part-iii--delivery">Part III — Delivery</h1>
+<h2 id="27-mvp-scope-cut-and-phases">27. MVP Scope Cut and Phases</h2>
+<p>The full spec is a multi-month build. We slice the MVP to <strong>the
+thinnest end-to-end path</strong> that demonstrates the DAO can operate
+one round and one proposal through filtering, vote, funding, and one
+milestone review. Everything outside that path is deferred.</p>
+<h3 id="271-mvp-definition">27.1 MVP definition</h3>
+<p>A real DRep must be able to do, end-to-end:</p>
+<ol type="1">
+<li>Connect their wallet, apply, and be admitted by the board</li>
+<li>See an active round and submit a funding proposal with a fee TX</li>
+<li>Be assigned (as a different DRep) to filter that proposal and
+vote</li>
+<li>See the proposal in Debate &amp; Vote, comment, and vote with
+balanced power</li>
+<li>See the result, including any quick-poll tie-break</li>
+<li>Send a pledge and have it auto-verified</li>
+<li>As a reviewer, see the milestone, receive POA, and vote</li>
+<li>See a reward calculation and the multisig TX paying it out</li>
+<li>Independently verify a vote tally hash against the on-chain
+anchor</li>
+</ol>
+<p>If those work, the platform is operational.</p>
+<h3 id="272-phase-1--mvp-target-3-months">27.2 Phase 1 — MVP (target: ~3
+months)</h3>
+<p><strong>In:</strong></p>
+<ul>
+<li>Wallet login (CIP-30 + CIP-8 for Eternl, Lace) — Yoroi and Nami in
+Phase 2</li>
+<li>DRep admission (manual board review only — autonomous gate
+deferred)</li>
+<li>Rounds (one at a time — parallel rounds in Phase 2)</li>
+<li>Categories (no RFP type in MVP, only GRANT — RFP in Phase 2)</li>
+<li>Funding proposals: submit, filter, D&amp;V, single quick-poll if
+needed</li>
+<li>Internal proposals: submit, vote, result (no polls, only
+instructive/informative)</li>
+<li>Milestone review: POA submission, vote, board confirm, payout</li>
+<li>Pledge: TX-hash flow</li>
+<li>Merit ledger with all earn/lose events</li>
+<li>DAO multisig: build → sign → broadcast workflow with 3-of-5</li>
+<li>On-chain anchoring: daily vote-tally + merit hashes; per-proposal
+snapshot hashes</li>
+<li>Notifications: in-app + email (Telegram in Phase 2)</li>
+<li>Configurable parameters (admin UI)</li>
+<li>Public proposal browser, vote viewer, DRep profile pages</li>
+</ul>
+<p><strong>Out:</strong></p>
+<ul>
+<li>Experts (only DReps can review milestones)</li>
+<li>Private messaging (use Telegram externally)</li>
+<li>Autonomous Sybil-protection engine</li>
+<li>RFP category type</li>
+<li>Telegram bot</li>
+<li>Parallel rounds</li>
+<li>Reward bonuses (only fixed rewards in MVP)</li>
+<li>Quick-poll auto-detection (board manually launches)</li>
+<li>Cardano webhook (use 30s polling)</li>
+<li>Recommendation-based admission</li>
+</ul>
+<h3 id="273-phase-2--production-target-2-months-after-mvp">27.3 Phase 2
+— Production (target: +2 months after MVP)</h3>
+<ul>
+<li>Parallel rounds</li>
+<li>Reward bonuses (full formula)</li>
+<li>Quick-poll auto-detection and one-click confirm</li>
+<li>RFP categories</li>
+<li>Experts for milestone review</li>
+<li>Telegram notifications</li>
+<li>Autonomous Sybil-protection engine</li>
+<li>Recommendation-based admission</li>
+<li>Private messaging (submitter ↔︎ board, DRep ↔︎ board)</li>
+<li>Blockfrost webhook integration</li>
+</ul>
+<h3 id="274-phase-3--hardening-target-1-2-months">27.4 Phase 3 —
+Hardening (target: +1-2 months)</h3>
+<ul>
+<li>Hot wallet → 2-of-3 quorum for anchoring</li>
+<li>Audit logging UI for board actions</li>
+<li>Disaster recovery: full backup + restore drill</li>
+<li>Load testing (target: 500 DReps, 200 active proposals, 50 RPS)</li>
+<li>Security review and penetration test</li>
+<li>Internationalisation framework (English-only content, but
+i18n-ready)</li>
+</ul>
+<h3 id="275-deferred-post-phase-3">27.5 Deferred (post-Phase 3)</h3>
+<ul>
+<li>Private votes / blurred voting power</li>
+<li>Stablecoin support</li>
+<li>Automated on-chain execution of internal proposals</li>
+<li>Third income pillar (% from funded project)</li>
+<li>Mobile app (web is mobile-responsive)</li>
+<li>Catalyst-style ranking refinements</li>
+<li>Multiple language translations</li>
+</ul>
+<hr />
+<h2 id="28-open-questions-and-todos">28. Open Questions and TODOs</h2>
+<p>Items that need a decision, verification, or further investigation
+before or during implementation.</p>
+<h3 id="281-verification-required-external">28.1 Verification required
+(external)</h3>
+<table>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Item</th>
+<th>Owner</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Q1</td>
+<td><strong>Confirm Intersect can send TW directly to a 3-of-5 multisig
+address.</strong> Per decision #26, the DAO Multisig is the recipient.
+Verify this is allowed by Intersect's current TW recipient policy.</td>
+<td>You (contact Intersect)</td>
+<td>If not allowed, alternative: an EOA controlled by a board member,
+who then immediately forwards to multisig. Inferior but viable.</td>
+</tr>
+<tr class="even">
+<td>Q2</td>
+<td><strong>Verify the chosen TW amount (4M ADA per round) covers
+project funding + DAO ops + rewards.</strong></td>
+<td>You</td>
+<td>Reconcile the per-round budget breakdown with the planned proposal
+sizes.</td>
+</tr>
+<tr class="odd">
+<td>Q3</td>
+<td><strong>Mainnet vs Preview/Preprod for initial testing.</strong>
+Cardano DRep registration is mainnet-only for production.</td>
+<td>You</td>
+<td>Recommend: build/test on Preprod, deploy MVP on mainnet with limited
+initial DRep cohort.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="282-implementation-decisions-needed-during-build">28.2
+Implementation decisions needed during build</h3>
+<table>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Item</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>I1</td>
+<td><strong>Board election mechanism for the interim period.</strong>
+Off-chain only in MVP, but <em>how</em>? Telegram poll? Pre-existing
+list? Document the source of the 5 names.</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>I2</td>
+<td><strong>Hot wallet for anchoring — single signer or 2-of-3?</strong>
+Section 23.4 recommends single signer for MVP; revisit before mainnet
+launch.</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>I3</td>
+<td><strong>Exact Merkle tree library.</strong> Standard sorted-keccak
+Merkle trees are fine; pick a Node.js lib with TypeScript types (e.g.,
+<code>merkletreejs</code>).</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>I4</td>
+<td><strong>Email service:</strong> Resend has a clean DX; AWS SES is
+cheaper at scale. Recommend Resend for MVP.</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>I5</td>
+<td><strong>What is the DAO Multisig's "operations" balance kept
+at?</strong> A floor amount (e.g., 5,000 ADA) below which automated
+alerts fire.</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>I6</td>
+<td><strong>DRep ID change handling.</strong> If a DRep retires their
+on-chain DRep and registers a new one, what's the platform's behavior?
+Recommend: treat as a new DRep; old votes/merit stay with the old ID and
+are visible historically.</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>I7</td>
+<td><strong>What's the "round number" for the first round?</strong>
+Recommend: 1. Document for clarity.</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>I8</td>
+<td><strong>Comment moderation policy.</strong> No moderation in MVP; if
+abuse happens, board can soft-delete a comment via DB. Document
+this.</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>I9</td>
+<td><strong>Vote rationale minimum length.</strong> Tentatively 200
+chars; might need to lower to 100 or raise. Validate with a few real
+proposals.</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="283-risk-items-to-monitor">28.3 Risk items to monitor</h3>
+<table>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Item</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>R1</td>
+<td><strong>Blockfrost downtime.</strong> Free Koios as fallback;
+circuit-breaker pattern in <code>CardanoQueryService</code>.</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>R2</td>
+<td><strong>Multisig coordination failure.</strong> If 2 board members
+go silent, no rewards can be paid. Mitigation: design the workflow to
+surface "needs sigs" prominently; add SMS escalation in Phase 3.</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>R3</td>
+<td><strong>Vote-buying via merit-multiplier abuse.</strong> A DRep at
++200 has 2× power. If +200 is too easy to reach, top DReps become
+unkillable. Monitor distribution; consider raising the cap or adding
+decay in Phase 2 if the distribution skews.</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>R4</td>
+<td><strong>Submitter sends wrong fee amount.</strong> Backend rejects;
+submitter must re-send. Document this case in the form UI.</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>R5</td>
+<td><strong>Cardano block hash unreliability for randomness.</strong>
+Block hashes are theoretically grindable by a single block producer. For
+MVP this is acceptable; for Phase 3, consider a commit-reveal scheme
+using multiple recent block hashes.</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>R6</td>
+<td><strong>Submission-fee TX hash from a different wallet than the
+submitter.</strong> Reject in verification; show clear error.</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>R7</td>
+<td><strong>Pledge sent to wrong address.</strong> Submitter loses
+funds; this is on them, but the form should <em>prominently</em> display
+the correct address with a copy button + QR code.</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="284-things-we-know-were-skipping">28.4 Things we know we're
+skipping</h3>
+<ul>
+<li>Multi-language UI (Phase 3+ with framework, no translations in
+MVP)</li>
+<li>Mobile app (responsive web is sufficient)</li>
+<li>Slack / Discord integration (Telegram only)</li>
+<li>On-chain enforcement of internal proposal actions (always
+off-platform)</li>
+<li>Stablecoin (USDM, DJED, USDA) support</li>
+<li>Automated KYC/KYB</li>
+<li>Cross-DAO interoperability</li>
+</ul>
+<h3 id="285-action-items-for-next-session">28.5 Action items for next
+session</h3>
+<p>Before writing code, we should:</p>
+<ol type="1">
+<li><strong>Get answer to Q1 from Intersect</strong> (recipient address
+policy for TW)</li>
+<li><strong>Confirm the 5 initial board members</strong> are identified,
+have wallets ready, and agree to operate the multisig</li>
+<li><strong>Decide hosting region</strong> (latency for board members?
+GDPR for European users?)</li>
+<li><strong>Set up a clean monorepo</strong> with the layout in
+22.3</li>
+<li><strong>Begin Phase 1 MVP</strong> starting with: wallet login →
+DRep admission → admin UI for rounds. These 3 unblock everything
+else.</li>
+</ol>
+<hr />
+<h2 id="document-end">Document end</h2>
+<p>This v2 design integrates the 32 decisions from your review session,
+removes all Clarity references, and adds the technical layer (DB schema,
+API surface, anchoring spec, MVP cut) needed to start building.</p>
+<p>It is a draft. Items flagged in section 28 are open. Items flagged
+inline with <code>(per decision #N)</code> reference your earlier
+responses.</p>
+<p>Next steps:</p>
+<ol type="1">
+<li>Read this end-to-end. Mark anything you disagree with or that
+doesn't match your intent.</li>
+<li>Resolve open questions in section 28.</li>
+<li>Start implementation — proposed entry point is Phase 1 MVP per
+section 27.2.</li>
+</ol>
+<hr />
+
+</body>
+</html>

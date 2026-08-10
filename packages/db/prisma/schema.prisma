@@ -1,0 +1,1514 @@
+// DRep DAO — Prisma schema. Faithful translation of design §24.
+// String columns hold the TEXT domains defined in @drep-dao/shared (enums.ts);
+// they are intentionally not Prisma enums, matching the design's "TEXT" columns.
+// Current merit balance (the §24.7 drep_merit_current VIEW) is computed in code
+// (sum of merit_ledger.delta, clamped to ±MERIT_POINT_MAX) rather than as a DB view.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// §24.1 Identity and access
+// ===========================================================================
+
+model AppUser {
+  id           String   @id @default(uuid()) @db.Uuid
+  stakeKeyHash String   @unique @map("stake_key_hash")
+  stakeAddress String   @map("stake_address")
+  displayName  String?  @map("display_name")
+  drepKeyHash  String?  @map("drep_key_hash") // CIP-95 DRep key hash (on-chain DRep identity), if any
+  drepRegistered Boolean @default(false) @map("drep_registered") // verified on-chain (registered + active) at last login
+  // §20 personal preferences: which block explorer this member's on-chain links use.
+  explorerPref       String? @map("explorer_pref") // cardanoscan | cexplorer | adastat | custom
+  explorerCustomTxUrl String? @map("explorer_custom_tx_url") // template with {hash} when explorerPref='custom'
+  // §15.4 — payment address for receiving rewards (DReps + board members).
+  // Editable; RewardEntry stamps the address it was paid to at the time of
+  // payment so changing this later doesn't rewrite history.
+  rewardPaymentAddress String? @map("reward_payment_address")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  drep                   Drep?
+  experts                Expert[]
+  submitterApplication   SubmitterApplication?
+  proposalsSubmitted     Proposal[]               @relation("ProposalSubmitter")
+  proposalVersionsEdited ProposalVersion[]
+  comments               Comment[]
+  privateMessages        PrivateMessage[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  configUpdates          PlatformConfig[]         @relation("ConfigUpdater")
+  stopFundingsProposed   StopFundingProposal[]    @relation("StopProposerUser")
+  budgetChangesRequested BudgetChangeRequest[]    @relation("BudgetChangeRequester")
+  budgetChangesDecided   BudgetChangeRequest[]    @relation("BudgetChangeDecider")
+  boardMultisigKey       BoardMultisigKey[]
+  hotWalletSweeps        HotWalletSweep[]
+  multisigCommitments    MultisigCommitment[]
+  treasuryBucketsCreated TreasuryBucket[]
+
+  @@map("app_user")
+}
+
+// §2.1 — to submit proposals a user must hold an approved "submitter" role. They apply with a
+// profile form; a board member approves or rejects (with a reason). Any account type (viewer, DAO
+// member, board) needs this before submitting.
+model SubmitterApplication {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @unique @map("user_id") @db.Uuid
+  status          String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  displayName     String    @map("display_name")
+  description     String
+  githubUrls      String[]  @map("github_urls")
+  socialLinks     String[]  @map("social_links")
+  logoDataUrl     String?   @map("logo_data_url") // base64 data URL
+  country         String
+  // §2.1 — disclosure + contact: conflicts of interest around funding approval, the informative
+  // "won't vote for my own proposal" pledge, and the contact the board reaches the team on.
+  conflictOfInterest String  @default("") @map("conflict_of_interest")
+  noSelfVotePledge   Boolean @default(false) @map("no_self_vote_pledge")
+  telegram           String  @default("")
+  email              String  @default("")
+  // §2.1 — all previous Cardano-ecosystem funding (Catalyst, Treasury Withdrawals, Builder
+  // DAO, …). Optional, expected to be kept up to date.
+  previousFunding    String  @default("") @map("previous_funding")
+  // §2 — the same entity may register a DAO-member profile on a DIFFERENT wallet. When this
+  // submitter declares "I'm also a DAO member", we store that member's on-chain DRep id here so
+  // the two profiles cross-link. Self-declared (board may override). Null = no link.
+  linkedDrepIdOnchain String? @map("linked_drep_id_onchain")
+  rejectionReason String?   @map("rejection_reason")
+  leftAt          DateTime? @map("left_at") @db.Timestamptz(6) // §2.1 — deregistered (profile kept)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  reviewedAt      DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  user            AppUser   @relation(fields: [userId], references: [id])
+
+  @@map("submitter_application")
+}
+
+// §2.1 — snapshot of a submitter profile each time an APPROVED one is edited, so the change
+// history is preserved (visible to the submitter + the board). Loose ref to the user.
+model SubmitterApplicationHistory {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  displayName String   @map("display_name")
+  description String
+  githubUrls  String[] @map("github_urls")
+  socialLinks String[] @map("social_links")
+  logoDataUrl String?  @map("logo_data_url")
+  country     String
+  conflictOfInterest String  @default("") @map("conflict_of_interest")
+  noSelfVotePledge   Boolean @default(false) @map("no_self_vote_pledge")
+  telegram           String  @default("")
+  email              String  @default("")
+  previousFunding    String  @default("") @map("previous_funding")
+  snapshotAt  DateTime @default(now()) @map("snapshot_at") @db.Timestamptz(6) // when this version was replaced
+
+  @@index([userId])
+  @@map("submitter_application_history")
+}
+
+model Drep {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @unique @map("user_id") @db.Uuid
+  drepIdOnchain      String    @unique @map("drep_id_onchain")
+  status             String // PENDING_ADMISSION, ADMITTED, REMOVED
+  bio                String?
+  photo              String? // user-uploaded profile photo as a data URL; overrides the CIP-119 on-chain image
+  socials            Json?
+  contact            Json?
+  subcategoryIds     String[]  @map("subcategory_ids")
+  kycOptin           Boolean   @default(false) @map("kyc_optin")
+  // §2.1 — same disclosure as the submitter profile: conflicts of interest around approving
+  // funding + the informative "won't vote for my own proposal" pledge.
+  conflictOfInterest String    @default("") @map("conflict_of_interest")
+  noSelfVotePledge   Boolean   @default(false) @map("no_self_vote_pledge")
+  country            String    @default("") // §14.3 — same picker as the submitter form
+  callsOptin         Boolean   @default(false) @map("calls_optin")
+  admissionCallOptin Boolean   @default(false) @map("admission_call_optin")
+  // §8.2 — board members vote on funding D&V only when this is true (default).
+  // Toggling it off mid-vote: their existing votes become effective abstain
+  // (their snapshot entry is skipped at tally time). Toggling it on adds them
+  // back live. Non-board admitted DReps are always voters and ignore this flag.
+  votesOnFundingProposals Boolean @default(true) @map("votes_on_funding_proposals")
+  // §2 — cross-wallet link: when this DAO member declares "I'm also a submitter", we store that
+  // submitter's account id (SubmitterApplication.userId) so the two profiles cross-link. Self-
+  // declared (board may override). Null = no link.
+  linkedSubmitterUserId String? @map("linked_submitter_user_id") @db.Uuid
+  admittedAt         DateTime? @map("admitted_at") @db.Timestamptz(6)
+  removedAt          DateTime? @map("removed_at") @db.Timestamptz(6)
+
+  user                    AppUser               @relation(fields: [userId], references: [id])
+  boardMemberships        BoardMembership[]
+  roundEligibilities      RoundDrepEligibility[]
+  proposalsSubmitted      Proposal[]            @relation("ProposalSubmitterDrep")
+  filterAssignments       FilterAssignment[]    @relation("FilterAssignee")
+  filterReplacements      FilterAssignment[]    @relation("FilterReplacement")
+  milestoneAssignments    MilestoneAssignment[]
+  snapshotEntries         VoteSnapshotEntry[]
+  votes                   Vote[]
+  quickPollVotes          QuickPollVote[]
+  meritLedger             MeritLedger[]
+  rewardEntries           RewardEntry[]
+  multisigSignatures      MultisigSignature[]
+  avoidPeriods            DrepAvoidPeriod[]
+  recommendationsReceived DrepRecommendation[]  @relation("RecommendationRecommended")
+  recommendationsMade     DrepRecommendation[]  @relation("RecommendationRecommender")
+  admissionVotesReceived  AdmissionVote[]       @relation("AdmissionApplicant")
+  admissionVotesCast      AdmissionVote[]       @relation("AdmissionVoter")
+  stopFundingsProposed    StopFundingProposal[] @relation("StopProposer")
+  stopFundingVotesCast    StopFundingVote[]     @relation("StopVoter")
+  multisigCommitments     MultisigCommitment[]
+
+  @@map("drep")
+}
+
+// §14.2 board votes on a DRep admission application (3-of-5 by default).
+model AdmissionVote {
+  id          String   @id @default(uuid()) @db.Uuid
+  drepId      String   @map("drep_id") @db.Uuid // the applicant
+  boardDrepId String   @map("board_drep_id") @db.Uuid // the board member voting
+  choice      String // YES, NO (NO requires feedback)
+  feedback    String?
+  // §C anchoring — the voter's CIP-30 signData over the canonical vote message
+  // (free, no tx). Lets anyone verify the vote was authorized by the voter's key.
+  signature   String?  @map("signature") // COSE_Sign1 hex
+  signingKey  String?  @map("signing_key") // COSE_Key hex
+  signedAt    DateTime? @map("signed_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  applicant Drep @relation("AdmissionApplicant", fields: [drepId], references: [id])
+  voter     Drep @relation("AdmissionVoter", fields: [boardDrepId], references: [id])
+
+  @@unique([drepId, boardDrepId])
+  @@map("admission_vote")
+}
+
+// §14.4 — board-initiated removal of a DAO member (DRep). One board member
+// proposes; all board members vote; 3-of-5 YES removes. Loose refs to drep.
+model DrepRemoval {
+  id           String    @id @default(uuid()) @db.Uuid
+  targetDrepId String    @map("target_drep_id") @db.Uuid // the DAO member being removed
+  proposedBy   String    @map("proposed_by") @db.Uuid // proposing board member's drep id
+  reason       String?
+  status       String // PENDING, APPROVED (removed), REJECTED (kept)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  votes DrepRemovalVote[]
+
+  @@index([targetDrepId, status])
+  @@map("drep_removal")
+}
+
+model DrepRemovalVote {
+  removalId   String   @map("removal_id") @db.Uuid
+  boardDrepId String   @map("board_drep_id") @db.Uuid
+  choice      String // YES (remove), NO (keep)
+  rationale   String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  removal DrepRemoval @relation(fields: [removalId], references: [id])
+
+  @@id([removalId, boardDrepId])
+  @@map("drep_removal_vote")
+}
+
+model BoardMembership {
+  id        String    @id @default(uuid()) @db.Uuid
+  drepId    String    @map("drep_id") @db.Uuid
+  startedAt DateTime  @map("started_at") @db.Timestamptz(6)
+  endedAt   DateTime? @map("ended_at") @db.Timestamptz(6)
+
+  drep Drep @relation(fields: [drepId], references: [id])
+
+  @@map("board_membership")
+}
+
+model Expert {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  displayName     String   @map("display_name")
+  bio             String?
+  // §2 — conflict-of-interest disclosure (markdown), same as DRep/submitter profiles.
+  conflictOfInterest String? @map("conflict_of_interest")
+  // §2 — the expert's motivation + where they want to help (filtering / debate & vote / milestones).
+  motivation         String? @map("motivation")
+  // §2 — contact + social, mirroring the submitter profile. email/telegram are
+  // mandatory at apply time (enforced in the service); socialLinks is optional.
+  email           String?  @default("")
+  telegram        String?  @default("")
+  socialLinks     String[] @default([]) @map("social_links")
+  // §2 — optional profile photo (data URL); falls back to the generated avatar.
+  logoDataUrl     String?  @map("logo_data_url")
+  subcategoryIds  String[] @map("subcategory_ids")
+  approvedByBoard Boolean  @default(false) @map("approved_by_board")
+  // §2 — set when the expert voluntarily leaves. A fresh expert (no review/reward
+  // history) is hard-deleted; one with audit history is soft-left here so the FK
+  // chain stays intact. Either way they vanish from every listing + lose the role.
+  leftAt          DateTime? @map("left_at") @db.Timestamptz(6)
+
+  user                 AppUser               @relation(fields: [userId], references: [id])
+  milestoneAssignments MilestoneAssignment[]
+  rewardEntries        RewardEntry[]
+  expertRewards        ExpertReward[]
+  milestoneVotes       MilestoneExpertVote[]
+
+  @@map("expert")
+}
+
+// ===========================================================================
+// §24.2 Configuration and taxonomy
+// ===========================================================================
+
+model PlatformConfig {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  updater AppUser? @relation("ConfigUpdater", fields: [updatedBy], references: [id])
+
+  @@map("platform_config")
+}
+
+model Subcategory {
+  id      String  @id // slug
+  label   String
+  active  Boolean @default(true)
+  sortIdx Int     @default(0) @map("sort_idx")
+
+  @@map("subcategory")
+}
+
+// ===========================================================================
+// §24.3 Rounds and categories
+// ===========================================================================
+
+model Round {
+  id              String    @id @default(uuid()) @db.Uuid
+  number          Int       @unique
+  name            String?
+  status          String // PREPARATION, FILTERING, DV, FUNDING, CLOSED
+  budgetAda       BigInt    @map("budget_ada") // Lovelace
+  rewardsPoolAda  BigInt    @map("rewards_pool_ada")
+  multisigAddress String    @map("multisig_address")
+  intersectTxHash String?   @map("intersect_tx_hash")
+  // §6/§12 — per-round settings (null = use the ROUND_SETTING_DEFAULTS value). The
+  // board sets these in the round setup; they are not in the platform-wide config.
+  filterReviewerCount    Int?     @map("filter_reviewer_count")
+  filterApprovalVotes    Int?     @map("filter_approval_votes")
+  milestoneReviewerCount Int?     @map("milestone_reviewer_count")
+  milestoneApprovalVotes Int?     @map("milestone_approval_votes")
+  dvApprovalThresholdPct Decimal? @map("dv_approval_threshold_pct") @db.Decimal(5, 2)
+  // §12.2 — reward pool splits: rewardExpertSharePct → experts (subtracted first);
+  // then of the DReps' pool, rewardDvSharePct → D&V (rest → milestone review);
+  // within the D&V slice, rewardFixedPct is fixed (bonus = 100 - rewardFixedPct).
+  rewardExpertSharePct            Int? @map("reward_expert_share_pct")
+  rewardDvSharePct                Int? @map("reward_dv_share_pct")
+  rewardFixedPct                  Int? @map("reward_fixed_pct")
+  // §12 — submission fees (percent + ADA caps); feeCapPerRoundAda caps filtering rewards.
+  feeCommercialPct                Int? @map("fee_commercial_pct")
+  feeCommercialCapAda             Int? @map("fee_commercial_cap_ada")
+  feeOssPct                       Int? @map("fee_oss_pct")
+  feeOssCapAda                    Int? @map("fee_oss_cap_ada")
+  feeCapPerRoundAda               Int? @map("fee_cap_per_round_ada")
+  // §9 — quick-poll settings.
+  quickPollParticipationPct       Int? @map("quick_poll_participation_pct")
+  quickPollDurationHours          Int? @map("quick_poll_duration_hours")
+  quickPollMaxExtensions          Int? @map("quick_poll_max_extensions")
+  // §11 — milestone timing.
+  milestoneNotificationDaysBeforeEnd Int? @map("milestone_notification_days_before_end")
+  milestoneAutoExtensionDays         Int? @map("milestone_auto_extension_days")
+  milestoneCheckPeriodDays           Int? @map("milestone_check_period_days")
+  milestoneBoardExtraExtensionDays   Int? @map("milestone_board_extra_extension_days")
+  // §13 — days the board has to pay out an approved milestone before the whole
+  // board loses merit (the signers who pay it in time earn merit). Default 5.
+  boardPayoutDeadlineDays            Int? @map("board_payout_deadline_days")
+  // §3 — proposer pledge.
+  pledgeThresholdAda              Int? @map("pledge_threshold_ada")
+  pledgeGraceDays                 Int? @map("pledge_grace_days")
+  // §7.4 — how many times a submitter may revise + resubmit a filter-rejected proposal.
+  filterResubmissionsAllowed      Int? @map("filter_resubmissions_allowed")
+  // §12 — how many budget-change requests the submitter may make while the round
+  // is in FILTERING (each clears the jury's filtering votes and they vote again).
+  filterBudgetChangesAllowed      Int? @map("filter_budget_changes_allowed")
+  // §3 — minimum word count enforced on every mandatory text field at submit
+  // and on post-submission edits. 0 disables the check (test mode).
+  mandatoryWords                  Int? @map("mandatory_words")
+  mandatoryWordsMax               Int? @map("mandatory_words_max")
+  // §3 — minimum number of characters a proposal title must have (0 disables).
+  minimumTitleLen                 Int? @map("minimum_title_len")
+  // §3 — minimum word count for short text fields (milestone titles); 0 disables.
+  minimumMilestoneTitleLen        Int? @map("minimum_milestone_title_len")
+  // §12 — budget-change policy (YES/NO stored as 1/0; null = ROUND_SETTING_DEFAULTS).
+  // ignoreBudgetChange YES → free budget edits, no fee change, no request flow.
+  ignoreBudgetChange              Int? @map("ignore_budget_change")
+  // When ignoreBudgetChange = NO: require a submitter fee top-up on an increase / a board
+  // fee return on a decrease, respectively (else the board just confirms the change).
+  requireFeeTopUp                 Int? @map("require_fee_top_up")
+  requireFeeReturn                Int? @map("require_fee_return")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  endedAt         DateTime? @map("ended_at") @db.Timestamptz(6)
+
+  categories         RoundCategory[]
+  eligibilities      RoundDrepEligibility[]
+  schedule           RoundSchedule[]
+  proposals          Proposal[]
+  quickPolls         QuickPoll[]
+  rewardCalculations RewardCalculation[]
+  expertRewards      ExpertReward[]
+
+  @@map("round")
+}
+
+model RoundCategory {
+  id           String  @id @default(uuid()) @db.Uuid
+  roundId      String  @map("round_id") @db.Uuid
+  name         String
+  type         String // GRANT or RFP
+  description  String?
+  conditions   String?
+  minAda       BigInt? @map("min_ada")
+  maxAda       BigInt? @map("max_ada")
+  allocatedAda BigInt  @map("allocated_ada")
+
+  round      Round       @relation(fields: [roundId], references: [id])
+  proposals  Proposal[]
+  quickPolls QuickPoll[]
+
+  @@map("round_category")
+}
+
+model RoundDrepEligibility {
+  roundId String   @map("round_id") @db.Uuid
+  drepId  String   @map("drep_id") @db.Uuid
+  addedAt DateTime @default(now()) @map("added_at") @db.Timestamptz(6)
+
+  round Round @relation(fields: [roundId], references: [id])
+  drep  Drep  @relation(fields: [drepId], references: [id])
+
+  @@id([roundId, drepId])
+  @@map("round_drep_eligibility")
+}
+
+model RoundSchedule {
+  roundId       String    @map("round_id") @db.Uuid
+  stageKey      String    @map("stage_key") // 'submission', 'filter_fb1', ...
+  startsAt      DateTime  @map("starts_at") @db.Timestamptz(6)
+  endsAt        DateTime  @map("ends_at") @db.Timestamptz(6)
+  prolongedFrom DateTime? @map("prolonged_from") @db.Timestamptz(6)
+  // §5.4/§8 — board confirms each stage transition. autoStart=true lets the
+  // scheduler advance at startsAt once confirmed; false waits for a manual launch.
+  autoStart   Boolean   @default(false) @map("auto_start")
+  confirmedAt DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  confirmedBy String?   @map("confirmed_by") @db.Uuid
+
+  round Round @relation(fields: [roundId], references: [id])
+
+  @@id([roundId, stageKey])
+  @@map("round_schedule")
+}
+
+// ===========================================================================
+// §24.4 Proposals
+// ===========================================================================
+
+model Proposal {
+  id     String  @id @default(uuid()) @db.Uuid
+  // Human-readable, globally-unique proposal id (e.g. "R6-P3"), assigned + frozen when the
+  // proposal first becomes ACTIVE (public). Used in the on-chain activation anchor + the UI.
+  publicId String? @unique @map("public_id")
+  type   String // FUNDING or INTERNAL
+  status String // DRAFT, PENDING, ACTIVE, APPROVED, REJECTED, COMPLETE, FAILED
+  stage  String? // FILTERING, DV, FUNDING, VOTING
+
+  submitterUserId String? @map("submitter_user_id") @db.Uuid
+  submitterDrepId String? @map("submitter_drep_id") @db.Uuid
+  title           String
+  contentMd       String  @map("content_md")
+  categoryId      String? @map("category_id") @db.Uuid
+  subcategoryIds  String[] @map("subcategory_ids")
+  roundId         String? @map("round_id") @db.Uuid
+
+  // funding
+  isCommercial        Boolean? @map("is_commercial")
+  requestedAmountAda  BigInt?  @map("requested_amount_ada")
+  submissionFeeAda    BigInt?  @map("submission_fee_ada")
+  submissionFeeTxHash String?  @map("submission_fee_tx_hash")
+  // Every distinct fee tx hash the submitter entered (the latest is submissionFeeTxHash);
+  // the board reviewer sees the full list so a corrected hash doesn't hide earlier attempts.
+  submissionFeeTxHashes String[] @default([]) @map("submission_fee_tx_hashes")
+  // The board's fee-review note shown to the submitter (red FEEDBACK box) — set on approve or reject.
+  feeReviewFeedback   String?  @map("fee_review_feedback")
+  // Cardano address the submitter receives funds at — fee refunds and (once funded) the budget payout.
+  payoutAddress       String?  @map("payout_address")
+  pledgeAmountAda     BigInt?  @map("pledge_amount_ada")
+  pledgeReturnMethod  String?  @map("pledge_return_method")
+  pledgeTxHash        String?  @map("pledge_tx_hash")
+  // §3 — board confirmation of the on-chain pledge payment. Mirrors fee review:
+  // pledgeConfirmedAt is set when the board approves; pledgeFeedback carries the
+  // board's note (required on reject, optional on approve).
+  pledgeConfirmedAt   DateTime? @map("pledge_confirmed_at") @db.Timestamptz(6)
+  pledgeFeedback      String?   @map("pledge_feedback")
+  // §16.4 — pledge grace window (set on D&V approval; board may extend). The daily
+  // pledge-grace job alerts the board once when it expires unpaid.
+  pledgeGraceEndsAt     DateTime? @map("pledge_grace_ends_at") @db.Timestamptz(6)
+  pledgeGraceNotifiedAt DateTime? @map("pledge_grace_notified_at") @db.Timestamptz(6)
+  // §27 tx-poller — when the platform first SAW the fee / pledge paid on-chain (dedupes the
+  // board notification; board confirmation stays manual per §16.2).
+  feeSeenOnchainAt    DateTime? @map("fee_seen_onchain_at") @db.Timestamptz(6)
+  pledgeSeenOnchainAt DateTime? @map("pledge_seen_onchain_at") @db.Timestamptz(6)
+  teamInfo            Json?    @map("team_info")
+  costBreakdownMd     String?  @map("cost_breakdown_md")
+  revenueSharing      Json?    @map("revenue_sharing")
+  // §3.4 — additional optional proposal sections (markdown, collapsible in the form/detail).
+  ecosystemImpactMd   String?  @map("ecosystem_impact_md")
+  successMetricsMd    String?  @map("success_metrics_md")
+
+  // internal
+  internalType  String?   @map("internal_type")
+  votersScope   String?   @map("voters_scope")
+  actors        Json?
+  deliveryDate  DateTime? @map("delivery_date") @db.Timestamptz(6)
+  // §10.4 — delivery-date reminder sent (once) by the daily job for approved INSTRUCTIVE proposals.
+  deliveryRemindedAt DateTime? @map("delivery_reminded_at") @db.Timestamptz(6)
+  pollOptions   Json?     @map("poll_options")
+  thresholdKind String?   @map("threshold_kind")
+  // §10 — PUBLIC by default; PRIVATE makes an internal proposal visible + votable to board only.
+  isPrivate     Boolean   @default(false) @map("is_private")
+  // §14 — board-member election: an INSTRUCTIVE internal proposal whose 5 actors are the
+  // candidates and whose deliveryDate is the install date. Set automatically on submit.
+  isBoardElection  Boolean   @default(false) @map("is_board_election")
+  boardInstalledAt DateTime? @map("board_installed_at") @db.Timestamptz(6)
+  // §10.5 — "Spending internal proposal": on approval the platform prepares an OPS multisig
+  // action (amount from a treasury bucket to the destination) that the board signs.
+  spendingAmountAda      BigInt?   @map("spending_amount_ada") // lovelace
+  spendingSourceBucketId String?   @map("spending_source_bucket_id") @db.Uuid
+  spendingDestAddress    String?   @map("spending_dest_address")
+  spendingActionId       String?   @map("spending_action_id") @db.Uuid // the prepared multisig action (idempotence + UI link)
+
+  // common
+  votingType           String // ONE_PERSON_ONE_VOTE or BALANCED
+  approvalThresholdPct Decimal?  @map("approval_threshold_pct") @db.Decimal(5, 2)
+  submittedAt          DateTime? @map("submitted_at") @db.Timestamptz(6)
+  votingStartAt        DateTime? @map("voting_start_at") @db.Timestamptz(6)
+  votingEndAt          DateTime? @map("voting_end_at") @db.Timestamptz(6)
+  resultFinalizedAt    DateTime? @map("result_finalized_at") @db.Timestamptz(6)
+  version              Int       @default(1)
+  // §7.4 — how many times the submitter has resubmitted this proposal after a
+  // filtering rejection. Each resubmit clears the existing filtering votes.
+  filterResubmissionsUsed Int    @default(0) @map("filter_resubmissions_used")
+  // §12 — how many budget-change requests this proposal used while the round was
+  // in FILTERING. Each accepted change clears the filtering votes (re-vote).
+  budgetChangesUsed       Int    @default(0) @map("budget_changes_used")
+  // §3.4 — revenue sharing: team's checkbox declaring they will share something
+  // (e.g. % of token supply to the Treasury). When true, the board must verify
+  // the conditions are met before milestone work begins. Independent from the
+  // free-text `revenueSharing` field which carries the details.
+  revenueSharingRequired   Boolean   @default(false) @map("revenue_sharing_required")
+  revenueSharingVerifiedAt DateTime? @map("revenue_sharing_verified_at") @db.Timestamptz(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  submitterUser  AppUser?           @relation("ProposalSubmitter", fields: [submitterUserId], references: [id])
+  submitterDrep  Drep?              @relation("ProposalSubmitterDrep", fields: [submitterDrepId], references: [id])
+  category       RoundCategory?     @relation(fields: [categoryId], references: [id])
+  round          Round?             @relation(fields: [roundId], references: [id])
+  versions       ProposalVersion[]
+  milestones     Milestone[]
+  filterAssignments FilterAssignment[]
+  voteSnapshots  VoteSnapshot[]
+  votes          Vote[]
+  comments       Comment[]
+  privateThreads PrivateThread[]
+  messageThreads ProposalMessageThread[]
+  quickPollsWon  QuickPoll[]        @relation("QuickPollWinner")
+  quickPollVotesFor QuickPollVote[] @relation("QuickPollChoice")
+  feeAdjustments FeeAdjustment[]
+  budgetChangeRequests BudgetChangeRequest[]
+  stopFundings   StopFundingProposal[]
+
+  @@index([roundId, status])
+  @@index([type, status])
+  @@map("proposal")
+}
+
+// §12 — a submission-fee settlement created when an ACTIVE proposal's budget changes:
+// an increase owes the submitter MORE fee (TOPUP), a decrease returns fee (REFUND). The
+// board settles it by recording the on-chain tx (a board task in My Area → Payments).
+model FeeAdjustment {
+  id              String    @id @default(uuid()) @db.Uuid
+  proposalId      String    @map("proposal_id") @db.Uuid
+  kind            String // TOPUP (submitter pays) | REFUND (DAO returns)
+  amountAda       BigInt    @map("amount_ada") // the fee delta to pay / return (lovelace)
+  prevAmountAda   BigInt    @map("prev_amount_ada") // proposal requested amount before
+  newAmountAda    BigInt    @map("new_amount_ada") // proposal requested amount after
+  prevFeeAda      BigInt?   @map("prev_fee_ada") // total submission fee before the change
+  newFeeAda       BigInt?   @map("new_fee_ada") // total submission fee after the change
+  status          String    @default("PENDING") // PENDING | SETTLED
+  txHash          String?   @map("tx_hash")
+  note            String?
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  settledAt       DateTime? @map("settled_at") @db.Timestamptz(6)
+  settledByUserId String?   @map("settled_by_user_id") @db.Uuid
+
+  proposal Proposal @relation(fields: [proposalId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("fee_adjustment")
+}
+
+// §12 — submitter's request to change a proposal's budget while ACTIVE. The board
+// approves or rejects; only after APPROVE is the proposal mutated, the filtering
+// votes cleared, and the fee delta queued (FeeAdjustment row). On REJECT the
+// proposal stays exactly as it was — previous reviewer votes survive.
+model BudgetChangeRequest {
+  id                 String    @id @default(uuid()) @db.Uuid
+  proposalId         String    @map("proposal_id") @db.Uuid
+  requesterId        String    @map("requester_id") @db.Uuid
+  prevAmountAda      BigInt    @map("prev_amount_ada")
+  proposedAmountAda  BigInt    @map("proposed_amount_ada")
+  proposedMilestones Json      @map("proposed_milestones") // [{title, description, acceptanceCriteria, amountAda}]
+  reason             String?
+  status             String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  decidedByUserId    String?   @map("decided_by_user_id") @db.Uuid
+  decidedFeedback    String?   @map("decided_feedback")
+  decidedAt          DateTime? @map("decided_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  proposal  Proposal @relation(fields: [proposalId], references: [id])
+  requester AppUser  @relation("BudgetChangeRequester", fields: [requesterId], references: [id])
+  decidedBy AppUser? @relation("BudgetChangeDecider", fields: [decidedByUserId], references: [id])
+
+  @@index([proposalId, status])
+  @@map("budget_change_request")
+}
+
+model ProposalVersion {
+  id         String   @id @default(uuid()) @db.Uuid
+  proposalId String   @map("proposal_id") @db.Uuid
+  version    Int
+  contentMd  String   @map("content_md") // kept for legacy rows; canonical pitch text lives in `snapshot` too
+  // Full snapshot of every editable field at this version (pitch, title, descriptive
+  // fields, payout, expertise, amount, commercial flag, milestones). Used by the
+  // diff view to surface ALL changes between two versions, not just the pitch.
+  snapshot   Json?    @map("snapshot")
+  editedBy   String?  @map("edited_by") @db.Uuid
+  editedAt   DateTime @default(now()) @map("edited_at") @db.Timestamptz(6)
+
+  proposal Proposal @relation(fields: [proposalId], references: [id])
+  editor   AppUser? @relation(fields: [editedBy], references: [id])
+
+  @@unique([proposalId, version])
+  @@map("proposal_version")
+}
+
+model Milestone {
+  id                 String    @id @default(uuid()) @db.Uuid
+  proposalId         String    @map("proposal_id") @db.Uuid
+  idx                Int
+  title              String?
+  description        String?
+  acceptanceCriteria String?   @map("acceptance_criteria")
+  amountAda          BigInt    @map("amount_ada")
+  deadlineAt         DateTime? @map("deadline_at") @db.Timestamptz(6)
+  status             String // NOT_STARTED, POA_SUBMITTED, IN_REVIEW, APPROVED, REJECTED
+  closedAt           DateTime? @map("closed_at") @db.Timestamptz(6)
+  // §11.4 — stamped when the PROJECT_FUNDING multisig tx confirms on-chain (not at approval).
+  paidAt             DateTime? @map("paid_at") @db.Timestamptz(6)
+  paidInTx           String?   @map("paid_in_tx")
+  // §11.5 — POA-period extensions: each rejection auto-extends the deadline
+  // (milestoneAutoExtensionDays); the board may add ONE extra extension (≤ max).
+  autoExtendedCount  Int       @default(0) @map("auto_extended_count")
+  boardExtensionDays Int?      @map("board_extension_days")
+  boardExtendedAt    DateTime? @map("board_extended_at") @db.Timestamptz(6)
+
+  proposal    Proposal              @relation(fields: [proposalId], references: [id])
+  poas        MilestonePoa[]
+  assignments MilestoneAssignment[]
+  votes       Vote[]
+  expertVotes MilestoneExpertVote[]
+
+  @@unique([proposalId, idx])
+  @@map("milestone")
+}
+
+model MilestonePoa {
+  id          String   @id @default(uuid()) @db.Uuid
+  milestoneId String   @map("milestone_id") @db.Uuid
+  contentMd   String?  @map("content_md")
+  submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  attempt     Int
+
+  milestone Milestone @relation(fields: [milestoneId], references: [id])
+
+  @@map("milestone_poa")
+}
+
+// ===========================================================================
+// §24.5 Reviewer assignments
+// ===========================================================================
+
+model FilterAssignment {
+  id         String    @id @default(uuid()) @db.Uuid
+  proposalId String    @map("proposal_id") @db.Uuid
+  drepId     String    @map("drep_id") @db.Uuid
+  assignedAt DateTime  @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(6)
+  releasedAt DateTime? @map("released_at") @db.Timestamptz(6)
+  replacedBy String?   @map("replaced_by") @db.Uuid
+
+  proposal     Proposal @relation(fields: [proposalId], references: [id])
+  drep         Drep     @relation("FilterAssignee", fields: [drepId], references: [id])
+  replacedByRef Drep?   @relation("FilterReplacement", fields: [replacedBy], references: [id])
+
+  @@map("filter_assignment")
+}
+
+model MilestoneAssignment {
+  id                  String    @id @default(uuid()) @db.Uuid
+  milestoneId         String    @map("milestone_id") @db.Uuid
+  reviewerDrepId      String?   @map("reviewer_drep_id") @db.Uuid
+  reviewerExpertId    String?   @map("reviewer_expert_id") @db.Uuid
+  assignedAt          DateTime  @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  confirmedByBoardAt  DateTime? @map("confirmed_by_board_at") @db.Timestamptz(6)
+  releasedAt          DateTime? @map("released_at") @db.Timestamptz(6)
+
+  milestone      Milestone @relation(fields: [milestoneId], references: [id])
+  reviewerDrep   Drep?     @relation(fields: [reviewerDrepId], references: [id])
+  reviewerExpert Expert?   @relation(fields: [reviewerExpertId], references: [id])
+
+  @@map("milestone_assignment")
+}
+
+// §11 — reviewers (or any board member) propose stopping funding of a project still
+// in the FUNDING stage. The board votes 1p1v; on APPROVED the proposal moves to
+// FAILED and is anchored on-chain. One ACTIVE stop per proposal (partial unique index).
+model StopFundingProposal {
+  id              String    @id @default(uuid()) @db.Uuid
+  proposalId      String    @map("proposal_id") @db.Uuid
+  proposerDrepId  String?   @map("proposer_drep_id") @db.Uuid
+  proposerUserId  String?   @map("proposer_user_id") @db.Uuid
+  proposerRole    String    @map("proposer_role") // REVIEWER | BOARD
+  reason          String
+  status          String    @default("ACTIVE") // ACTIVE | APPROVED | REJECTED | WITHDRAWN
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  decidedAt       DateTime? @map("decided_at") @db.Timestamptz(6)
+  anchorTxHash    String?   @map("anchor_tx_hash")
+
+  proposal     Proposal          @relation(fields: [proposalId], references: [id])
+  proposerDrep Drep?             @relation("StopProposer", fields: [proposerDrepId], references: [id])
+  proposerUser AppUser?          @relation("StopProposerUser", fields: [proposerUserId], references: [id])
+  votes        StopFundingVote[]
+
+  @@index([proposalId, status])
+  @@map("stop_funding_proposal")
+}
+
+model StopFundingVote {
+  id          String   @id @default(uuid()) @db.Uuid
+  stopId      String   @map("stop_id") @db.Uuid
+  boardDrepId String   @map("board_drep_id") @db.Uuid
+  choice      String   // YES | NO
+  rationale   String?
+  castAt      DateTime @default(now()) @map("cast_at") @db.Timestamptz(6)
+
+  stop  StopFundingProposal @relation(fields: [stopId], references: [id])
+  voter Drep                @relation("StopVoter", fields: [boardDrepId], references: [id])
+
+  @@unique([stopId, boardDrepId])
+  @@map("stop_funding_vote")
+}
+
+// ===========================================================================
+// §24.6 Votes and snapshots
+// ===========================================================================
+
+model VoteSnapshot {
+  id         String   @id @default(uuid()) @db.Uuid
+  proposalId String   @map("proposal_id") @db.Uuid
+  takenAt    DateTime @default(now()) @map("taken_at") @db.Timestamptz(6)
+  anchorId   String?  @map("anchor_id") @db.Uuid
+
+  proposal Proposal            @relation(fields: [proposalId], references: [id])
+  anchor   Anchor?             @relation(fields: [anchorId], references: [id])
+  entries  VoteSnapshotEntry[]
+
+  @@map("vote_snapshot")
+}
+
+model VoteSnapshotEntry {
+  snapshotId      String  @map("snapshot_id") @db.Uuid
+  drepId          String  @map("drep_id") @db.Uuid
+  stakeLovelace   BigInt  @map("stake_lovelace")
+  meritPoints     Int     @map("merit_points")
+  basePower       Decimal? @map("base_power") @db.Decimal(12, 4)
+  meritMultiplier Decimal? @map("merit_multiplier") @db.Decimal(12, 4)
+  finalPower      Decimal? @map("final_power") @db.Decimal(12, 4)
+
+  snapshot VoteSnapshot @relation(fields: [snapshotId], references: [id])
+  drep     Drep         @relation(fields: [drepId], references: [id])
+
+  @@id([snapshotId, drepId])
+  @@map("vote_snapshot_entry")
+}
+
+model Vote {
+  id           String   @id @default(uuid()) @db.Uuid
+  proposalId   String   @map("proposal_id") @db.Uuid
+  drepId       String   @map("drep_id") @db.Uuid
+  milestoneId  String?  @map("milestone_id") @db.Uuid
+  phase        String? // FILTERING, DEBATE_VOTE, MILESTONE — disambiguates phases on one proposal
+  choice       String // YES, NO, ABSTAIN
+  rationale    String?
+  castAt       DateTime @default(now()) @map("cast_at") @db.Timestamptz(6)
+  supersededBy String?  @map("superseded_by") @db.Uuid
+
+  proposal     Proposal   @relation(fields: [proposalId], references: [id])
+  drep         Drep       @relation(fields: [drepId], references: [id])
+  milestone    Milestone? @relation(fields: [milestoneId], references: [id])
+  supersededByVote Vote?  @relation("VoteSupersede", fields: [supersededBy], references: [id])
+  supersedes   Vote[]     @relation("VoteSupersede")
+
+  @@index([proposalId, drepId])
+  @@map("vote")
+}
+
+// §8 — superseded Debate & Vote rationales, kept read-only for the audit trail. The current
+// rationale lives on Vote; each time a DRep re-votes, the rationale being replaced is archived
+// here so all previous reasoning stays viewable (but not editable).
+model DvRationale {
+  id         String   @id @default(uuid()) @db.Uuid
+  proposalId String   @map("proposal_id") @db.Uuid // loose ref
+  drepId     String   @map("drep_id") @db.Uuid // loose ref
+  choice     String
+  rationale  String?
+  castAt     DateTime @map("cast_at") @db.Timestamptz(6) // when the archived rationale was originally cast
+
+  @@index([proposalId, drepId])
+  @@map("dv_rationale")
+}
+
+// §3.5 — board ↔ submitter messaging per proposal. A thread is one conversation (the board
+// asks the team to do something — send tokens to the Treasury, fix a pledge, etc.); entries are
+// the back-and-forth. All board members + the proposal's submitter can see it. Marked DONE → history.
+model ProposalMessageThread {
+  id          String    @id @default(uuid()) @db.Uuid
+  proposalId  String    @map("proposal_id") @db.Uuid
+  status      String    @default("OPEN") // OPEN | DONE
+  createdById String    @map("created_by_id") @db.Uuid // loose ref to AppUser (the board member who opened it)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  doneAt      DateTime? @map("done_at") @db.Timestamptz(6)
+  proposal    Proposal  @relation(fields: [proposalId], references: [id])
+  entries     ProposalMessageEntry[]
+
+  @@index([proposalId])
+  @@map("proposal_message_thread")
+}
+
+model ProposalMessageEntry {
+  id        String   @id @default(uuid()) @db.Uuid
+  threadId  String   @map("thread_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid // loose ref to AppUser
+  fromBoard Boolean  @map("from_board") // true = a board member, false = the submitter
+  body      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  thread    ProposalMessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@map("proposal_message_entry")
+}
+
+// §11/§12 — an Expert assigned to a milestone reviews it like a DRep. Kept in its
+// own table so the DRep-centric Vote model (and filtering/D&V tallies) stay untouched.
+model MilestoneExpertVote {
+  id          String   @id @default(uuid()) @db.Uuid
+  milestoneId String   @map("milestone_id") @db.Uuid
+  expertId    String   @map("expert_id") @db.Uuid
+  choice      String // YES, NO
+  rationale   String?
+  castAt      DateTime @default(now()) @map("cast_at") @db.Timestamptz(6)
+
+  milestone Milestone @relation(fields: [milestoneId], references: [id])
+  expert    Expert    @relation(fields: [expertId], references: [id])
+
+  @@unique([milestoneId, expertId])
+  @@map("milestone_expert_vote")
+}
+
+// §8.2 — board members do NOT vote on funding D&V by default; they must explicitly
+// opt in per proposal. Recorded here; openVoting includes opted-in board in the snapshot.
+model DvBoardOptIn {
+  id         String   @id @default(uuid()) @db.Uuid
+  proposalId String   @map("proposal_id") @db.Uuid
+  drepId     String   @map("drep_id") @db.Uuid
+  optedAt    DateTime @default(now()) @map("opted_at") @db.Timestamptz(6)
+
+  @@unique([proposalId, drepId])
+  @@map("dv_board_opt_in")
+}
+
+// §18/§23 — operator secrets the PLATFORM manages (admin-only), e.g. the active
+// anchor hot-wallet mnemonic after an in-platform SEED rotation. Overrides the env
+// default. NEVER exposed via any read API. Prod should use a KMS instead of the DB.
+model PlatformSecret {
+  key       String   @id
+  value     String
+  updatedBy String?  @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("platform_secret")
+}
+
+model QuickPoll {
+  id         String    @id @default(uuid()) @db.Uuid
+  roundId    String    @map("round_id") @db.Uuid
+  categoryId String    @map("category_id") @db.Uuid
+  candidates String[]  @db.Uuid // tied proposal ids (loose; not FK)
+  startsAt   DateTime? @map("starts_at") @db.Timestamptz(6)
+  endsAt     DateTime? @map("ends_at") @db.Timestamptz(6)
+  extensions Int       @default(0)
+  status     String // PENDING_BOARD, ACTIVE, RESOLVED, FAILED
+  winnerId   String?   @map("winner_id") @db.Uuid
+  // §9.2 — voters frozen at launch (same eligibility as D&V); drives the 51% participation check.
+  eligibleDrepIds String[] @map("eligible_drep_ids") @db.Uuid
+
+  round    Round           @relation(fields: [roundId], references: [id])
+  category RoundCategory   @relation(fields: [categoryId], references: [id])
+  winner   Proposal?       @relation("QuickPollWinner", fields: [winnerId], references: [id])
+  votes    QuickPollVote[]
+
+  @@map("quick_poll")
+}
+
+model QuickPollVote {
+  quickPollId String   @map("quick_poll_id") @db.Uuid
+  drepId      String   @map("drep_id") @db.Uuid
+  // §9.2 — ranked priority: candidate proposal ids ordered highest-priority first.
+  ranking     String[] @default([]) @db.Uuid
+  choice      String?  @db.Uuid // top pick (= ranking[0]); kept for the choiceProposal relation + back-compat
+  power       Float    @default(0) // §9.2 balanced voting power at cast time
+  castAt      DateTime @default(now()) @map("cast_at") @db.Timestamptz(6)
+
+  quickPoll      QuickPoll @relation(fields: [quickPollId], references: [id])
+  drep           Drep      @relation(fields: [drepId], references: [id])
+  choiceProposal Proposal? @relation("QuickPollChoice", fields: [choice], references: [id])
+
+  @@id([quickPollId, drepId])
+  @@map("quick_poll_vote")
+}
+
+// ===========================================================================
+// §24.7 Merit ledger
+// ===========================================================================
+
+model MeritLedger {
+  id          String   @id @default(uuid()) @db.Uuid
+  drepId      String   @map("drep_id") @db.Uuid
+  delta       Decimal  @db.Decimal(6, 2)
+  reasonCode  String   @map("reason_code")
+  referenceId String?  @map("reference_id") @db.Uuid // loose ref (proposal/milestone/round)
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  drep Drep @relation(fields: [drepId], references: [id])
+
+  @@index([drepId, occurredAt])
+  @@map("merit_ledger")
+}
+
+// ===========================================================================
+// §24.8 Rewards
+// ===========================================================================
+
+model RewardCalculation {
+  id         String   @id @default(uuid()) @db.Uuid
+  roundId    String?  @map("round_id") @db.Uuid // null for BOARD_MONTHLY (not round-scoped)
+  kind       String // FILTER, DV_FIXED, DV_BONUS, MILESTONE, EXPERT, BOARD_MONTHLY
+  poolAda    BigInt   @map("pool_ada")
+  totalUnits Decimal? @map("total_units")
+  // §13 — for BOARD_MONTHLY: which calendar month (UTC, first day) it covers, for idempotency.
+  periodKey  String?  @map("period_key")
+  computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  round   Round?        @relation(fields: [roundId], references: [id])
+  entries RewardEntry[]
+
+  @@map("reward_calculation")
+}
+
+model RewardEntry {
+  id                  String    @id @default(uuid()) @db.Uuid
+  rewardCalculationId String    @map("reward_calculation_id") @db.Uuid
+  drepId              String?   @map("drep_id") @db.Uuid // recipient: a DRep …
+  expertId            String?   @map("expert_id") @db.Uuid // … or an Expert
+  amountAda           BigInt    @map("amount_ada") // computed reward
+  units               Int?      @map("units") // §12 — votes/checks that earned it (display)
+  overrideAda         BigInt?   @map("override_ada") // §12 — board's per-recipient override (wins when set)
+  payoutActionId      String?   @map("payout_action_id") @db.Uuid // the REWARD_PAYOUT multisig action paying it
+  paidInTx            String?   @map("paid_in_tx")
+  paidAt              DateTime? @map("paid_at") @db.Timestamptz(6)
+  // §15.4 — destination address at the time of payment. Preserved even if
+  // the DRep later updates their reward address on their profile, so the
+  // treasury history page can show exactly where each old payment went.
+  paidToAddress       String?   @map("paid_to_address")
+
+  rewardCalculation RewardCalculation @relation(fields: [rewardCalculationId], references: [id])
+  drep              Drep?             @relation(fields: [drepId], references: [id])
+  expert            Expert?           @relation(fields: [expertId], references: [id])
+  payoutAction      MultisigAction?   @relation(fields: [payoutActionId], references: [id])
+
+  @@map("reward_entry")
+}
+
+// §12 — board-set ADA reward for an expert in a round, per stage. milestoneLikeDrep:
+// when true the expert also earns the per-check DRep milestone reward (this is the
+// "extra") on top of milestoneAda; when false they get only milestoneAda.
+model ExpertReward {
+  id                String   @id @default(uuid()) @db.Uuid
+  roundId           String   @map("round_id") @db.Uuid
+  expertId          String   @map("expert_id") @db.Uuid
+  filteringAda      BigInt   @default(0) @map("filtering_ada")
+  dvAda             BigInt   @default(0) @map("dv_ada")
+  milestoneAda      BigInt   @default(0) @map("milestone_ada")
+  milestoneLikeDrep Boolean  @default(false) @map("milestone_like_drep")
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  round  Round  @relation(fields: [roundId], references: [id])
+  expert Expert @relation(fields: [expertId], references: [id])
+
+  @@unique([roundId, expertId])
+  @@map("expert_reward")
+}
+
+// ===========================================================================
+// §24.9 Treasury and Cardano
+// ===========================================================================
+
+model MultisigAction {
+  id          String   @id @default(uuid()) @db.Uuid
+  kind        String // REWARD_PAYOUT, PROJECT_FUNDING, PLEDGE_RETURN, OPS, LEFTOVER_RETURN
+  txCbor      String?  @map("tx_cbor")
+  txHash      String?  @map("tx_hash")
+  status      String // PENDING_SIGS, READY, BROADCASTED, CONFIRMED, FAILED
+  amountAda   BigInt?  @map("amount_ada")
+  description String?
+  // §11/§15 — for PROJECT_FUNDING (milestone payouts) we keep a structured link
+  // back to the proposal + milestone so the UI can show the full destination
+  // address, the proposal title, and stamp the milestone PAID once the on-chain
+  // tx is confirmed (no description-text parsing).
+  proposalId    String?   @map("proposal_id") @db.Uuid
+  milestoneId   String?   @map("milestone_id") @db.Uuid
+  milestoneIdx  Int?      @map("milestone_idx")
+  proposalTitle String?   @map("proposal_title")
+  destAddress   String?   @map("dest_address")
+  paidAt        DateTime? @map("paid_at") @db.Timestamptz(6)
+  // §15.2 — for MIGRATION-kind actions: which old wallet the funds leave and
+  // which new wallet they land at. Both null for normal payouts (use
+  // destAddress + the active MultisigConfig).
+  fromConfigId  String?   @map("from_config_id") @db.Uuid
+  toConfigId    String?   @map("to_config_id")   @db.Uuid
+  // §15 phase-2 — snapshot of which M multisig keyhashes were chosen at the
+  // moment threshold authorizations were collected. The tx body is built
+  // with these as required_signers; tx-witness submissions are gated to
+  // exactly these signers. Null while still in phase-1 (collecting commits).
+  committedKeyHashes String[] @map("committed_key_hashes")
+  // §15.5 — for BOARD_TRANSFER (and similar) actions: which labeled bucket
+  // the funds come from. NULL = primary (bare multisig) bucket.
+  sourceBucketId  String? @map("source_bucket_id") @db.Uuid
+  // §13.2 — board member who manually initiated this action (e.g. a hot-wallet
+  // top-up). NULL for platform-prepared actions. Earns +1 merit (TX_INITIATED)
+  // once the tx reaches the network.
+  initiatorUserId String? @map("initiator_user_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  signatures  MultisigSignature[]
+  commitments MultisigCommitment[]
+  rewardEntries RewardEntry[] // §12 — a REWARD_PAYOUT action pays many entries (multi-output)
+  fromConfig  MultisigConfig?     @relation("MultisigActionFromConfig", fields: [fromConfigId], references: [id])
+  toConfig    MultisigConfig?     @relation("MultisigActionToConfig",   fields: [toConfigId],   references: [id])
+  sourceBucket TreasuryBucket?    @relation("MultisigActionSourceBucket", fields: [sourceBucketId], references: [id])
+
+  @@index([proposalId])
+  @@index([milestoneId])
+  @@map("multisig_action")
+}
+
+// §15 — board-provided context for an on-chain treasury transaction. Overrides the
+// auto-detected label (e.g. "anonymous income" → "Intersect — Milestone 1 payment")
+// and adds a free-text note, attributed to the board member who set it.
+model TreasuryTxAnnotation {
+  id          String   @id @default(uuid()) @db.Uuid
+  txHash      String   @unique @map("tx_hash")
+  title       String?  // overrides the auto label when set
+  description String?
+  byUserId    String   @map("by_user_id") @db.Uuid
+  byName      String   @map("by_name") // snapshot of the board member's display name
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("treasury_tx_annotation")
+}
+
+model MultisigSignature {
+  id          String   @id @default(uuid()) @db.Uuid
+  actionId    String   @map("action_id") @db.Uuid
+  boardDrepId String   @map("board_drep_id") @db.Uuid
+  witnessCbor String   @map("witness_cbor")
+  signedAt    DateTime @default(now()) @map("signed_at") @db.Timestamptz(6)
+
+  action MultisigAction @relation(fields: [actionId], references: [id])
+  drep   Drep           @relation(fields: [boardDrepId], references: [id])
+
+  @@unique([actionId, boardDrepId])
+  @@map("multisig_signature")
+}
+
+// §15 phase-1 — a board member's cheap CIP-30 data-sig saying "I commit to
+// signing this action with my HW wallet". Once `threshold` commitments are
+// collected, the platform builds the tx body with exactly those members'
+// keyhashes in required_signers, and they then submit real tx witnesses.
+model MultisigCommitment {
+  id          String   @id @default(uuid()) @db.Uuid
+  actionId    String   @map("action_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  drepId      String   @map("drep_id") @db.Uuid
+  keyHash     String   @map("key_hash")
+  signature   String
+  signingKey  String   @map("signing_key")
+  ts          String
+  committedAt DateTime @default(now()) @map("committed_at") @db.Timestamptz(6)
+
+  action MultisigAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  user   AppUser        @relation(fields: [userId], references: [id])
+  drep   Drep           @relation(fields: [drepId], references: [id])
+
+  @@unique([actionId, userId])
+  @@index([actionId])
+  @@map("multisig_commitment")
+}
+
+model CardanoTxObservation {
+  txHash      String    @id @map("tx_hash")
+  blockHeight BigInt?   @map("block_height")
+  confirmedAt DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  metadata    Json?
+  observedAt  DateTime  @default(now()) @map("observed_at") @db.Timestamptz(6)
+
+  @@map("cardano_tx_observation")
+}
+
+// ===========================================================================
+// §24.10 Anchoring
+// ===========================================================================
+
+model Anchor {
+  id            String    @id @default(uuid()) @db.Uuid
+  kind          String
+  roundId       String?   @map("round_id") @db.Uuid // loose ref
+  proposalId    String?   @map("proposal_id") @db.Uuid // loose ref
+  hash          String
+  preimage      Json?
+  txHash        String?   @map("tx_hash")
+  metadataLabel Int       @map("metadata_label") // 80808080
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  submittedAt   DateTime? @map("submitted_at") @db.Timestamptz(6)
+  confirmedAt   DateTime? @map("confirmed_at") @db.Timestamptz(6)
+
+  voteSnapshots VoteSnapshot[]
+
+  @@index([kind, createdAt])
+  @@map("anchor")
+}
+
+// ===========================================================================
+// §24.11 Communication and notifications
+// ===========================================================================
+
+model Comment {
+  id           String    @id @default(uuid()) @db.Uuid
+  proposalId   String    @map("proposal_id") @db.Uuid
+  parentId     String?   @map("parent_id") @db.Uuid
+  authorUserId String    @map("author_user_id") @db.Uuid
+  contentMd    String    @map("content_md")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  proposal Proposal  @relation(fields: [proposalId], references: [id])
+  parent   Comment?  @relation("CommentParent", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentParent")
+  author   AppUser   @relation(fields: [authorUserId], references: [id])
+
+  @@map("comment")
+}
+
+model PrivateThread {
+  id         String @id @default(uuid()) @db.Uuid
+  proposalId String @map("proposal_id") @db.Uuid
+  kind       String // SUBMITTER_BOARD, DREP_BOARD_SHARED
+
+  proposal Proposal         @relation(fields: [proposalId], references: [id])
+  messages PrivateMessage[]
+
+  @@map("private_thread")
+}
+
+model PrivateMessage {
+  id           String   @id @default(uuid()) @db.Uuid
+  threadId     String   @map("thread_id") @db.Uuid
+  authorUserId String   @map("author_user_id") @db.Uuid
+  contentMd    String   @map("content_md")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  thread PrivateThread @relation(fields: [threadId], references: [id])
+  author AppUser       @relation(fields: [authorUserId], references: [id])
+
+  @@map("private_message")
+}
+
+model Notification {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  kind         String
+  payload      Json
+  channelsSent String[]  @map("channels_sent")
+  readAt       DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user AppUser @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+  @@map("notification")
+}
+
+model NotificationPreference {
+  userId         String  @id @map("user_id") @db.Uuid
+  inApp          Boolean @default(true) @map("in_app")
+  email          Boolean @default(true)
+  emailAddr      String? @map("email_addr")
+  telegram       Boolean @default(false)
+  telegramChatId String? @map("telegram_chat_id")
+
+  user AppUser @relation(fields: [userId], references: [id])
+
+  @@map("notification_preference")
+}
+
+// ===========================================================================
+// §24.12 Avoid periods and recommendations
+// ===========================================================================
+
+model DrepAvoidPeriod {
+  id        String   @id @default(uuid()) @db.Uuid
+  drepId    String   @map("drep_id") @db.Uuid
+  startsAt  DateTime @map("starts_at") @db.Timestamptz(6)
+  endsAt    DateTime @map("ends_at") @db.Timestamptz(6)
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  drep Drep @relation(fields: [drepId], references: [id])
+
+  @@map("drep_avoid_period")
+}
+
+model DrepRecommendation {
+  id                String   @id @default(uuid()) @db.Uuid
+  recommendedDrepId String   @map("recommended_drep_id") @db.Uuid
+  recommenderDrepId String   @map("recommender_drep_id") @db.Uuid
+  note              String?
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  recommended Drep @relation("RecommendationRecommended", fields: [recommendedDrepId], references: [id])
+  recommender Drep @relation("RecommendationRecommender", fields: [recommenderDrepId], references: [id])
+
+  @@map("drep_recommendation")
+}
+
+// ===========================================================================
+// §25.13 Platform Administration — fully separate from the wallet-auth tables.
+// No foreign key links admin_user to app_user/drep: the identities are
+// independent by design (§18.3).
+// ===========================================================================
+
+model AdminUser {
+  id           String    @id @default(uuid()) @db.Uuid
+  username     String    @unique
+  email        String
+  passwordHash String    @map("password_hash") // Argon2id
+  status       String // ACTIVE, DISABLED, REMOVED
+  createdById  String?   @map("created_by") @db.Uuid // null for the CLI-created first admin
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
+  removedAt    DateTime? @map("removed_at") @db.Timestamptz(6)
+
+  createdBy          AdminUser?          @relation("AdminCreatedBy", fields: [createdById], references: [id])
+  created            AdminUser[]         @relation("AdminCreatedBy")
+  twoFa              Admin2fa?
+  recoveryCodes      AdminRecoveryCode[]
+  sessions           AdminSession[]
+  invitationsCreated AdminInvitation[]
+  auditLogs          AdminAuditLog[]
+  genesisApprovals   PlatformState[]     @relation("GenesisApprover")
+
+  @@map("admin_user")
+}
+
+model Admin2fa {
+  adminId    String    @id @map("admin_id") @db.Uuid
+  totpSecret String    @map("totp_secret") // encrypted at rest (TODO: KMS); base32 for now
+  enrolledAt DateTime? @map("enrolled_at") @db.Timestamptz(6)
+  required   Boolean   @default(true) // mandatory mainnet; may be FALSE on testnet
+
+  admin AdminUser @relation(fields: [adminId], references: [id])
+
+  @@map("admin_2fa")
+}
+
+model AdminRecoveryCode {
+  id       String    @id @default(uuid()) @db.Uuid
+  adminId  String    @map("admin_id") @db.Uuid
+  codeHash String    @map("code_hash") // Argon2id of the code
+  usedAt   DateTime? @map("used_at") @db.Timestamptz(6)
+
+  admin AdminUser @relation(fields: [adminId], references: [id])
+
+  @@map("admin_recovery_code")
+}
+
+model AdminSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  adminId   String    @map("admin_id") @db.Uuid
+  ip        String?   @db.Inet
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  admin AdminUser @relation(fields: [adminId], references: [id])
+
+  @@map("admin_session")
+}
+
+model AdminInvitation {
+  id          String    @id @default(uuid()) @db.Uuid
+  username    String
+  email       String
+  tokenHash   String    @map("token_hash")
+  createdById String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt  DateTime? @map("consumed_at") @db.Timestamptz(6)
+
+  createdBy AdminUser? @relation(fields: [createdById], references: [id])
+  // §18.6 — set when this invitation is part of a "switch all admins" rotation.
+  rotationId String? @map("rotation_id") @db.Uuid
+
+  @@map("admin_invitation")
+}
+
+// §18.8 — admin-triggered password reset: a one-time token (hashed) the target admin uses to set
+// a new password. 1-hour TTL per design.
+model AdminPasswordReset {
+  id          String    @id @default(uuid()) @db.Uuid
+  adminId     String    @map("admin_id") @db.Uuid
+  tokenHash   String    @map("token_hash")
+  createdById String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt      DateTime? @map("used_at") @db.Timestamptz(6)
+
+  @@index([adminId])
+  @@map("admin_password_reset")
+}
+
+// §18.6 — "switch all admins": one rotation creates invitations for the NEW roster; when the last
+// one is accepted, every admin outside the rotation is disabled (single audit entry).
+model AdminRotation {
+  id          String    @id @default(uuid()) @db.Uuid
+  createdById String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  @@map("admin_rotation")
+}
+
+// §15.4 — daily treasury reconciliation snapshot: total multisig balance vs the delta explained
+// by confirmed actions; mismatches alert the board.
+model TreasuryDailySnapshot {
+  id                String   @id @default(uuid()) @db.Uuid
+  day               String   @unique // YYYY-MM-DD (UTC)
+  totalLovelace     BigInt   @map("total_lovelace")
+  prevLovelace      BigInt?  @map("prev_lovelace")
+  explainedLovelace BigInt   @default(0) @map("explained_lovelace") // net of confirmed actions that day
+  mismatch          Boolean  @default(false)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("treasury_daily_snapshot")
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  adminId    String?  @map("admin_id") @db.Uuid
+  action     String
+  target     String?
+  payload    Json?
+  ip         String?  @db.Inet
+  userAgent  String?  @map("user_agent")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  admin AdminUser? @relation(fields: [adminId], references: [id])
+
+  @@index([adminId, occurredAt])
+  @@index([action, occurredAt])
+  @@map("admin_audit_log")
+}
+
+model AdminLoginAttempt {
+  id          String   @id @default(uuid()) @db.Uuid
+  username    String
+  ip          String   @db.Inet
+  success     Boolean
+  attemptedAt DateTime @default(now()) @map("attempted_at") @db.Timestamptz(6)
+
+  @@index([username, attemptedAt])
+  @@index([ip, attemptedAt])
+  @@map("admin_login_attempt")
+}
+
+// §17.5 — founding board seats, keyed by on-chain DRep key hash (verified at
+// genesis). A wallet is a board member when its CIP-95 DRep key hash matches a
+// seat. Decoupled from app_user so seats exist before a member first logs in.
+model BoardSeat {
+  id          String    @id @default(uuid()) @db.Uuid
+  drepKeyHash String    @map("drep_key_hash") // 28-byte DRep credential hex
+  drepId      String    @map("drep_id") // bech32 drep1... as provided
+  displayName String    @map("display_name")
+  addedAt     DateTime  @default(now()) @map("added_at") @db.Timestamptz(6)
+  // §15 — soft-delete so the link to past multisig keys is preserved when the
+  // board is re-elected. Active seats: removedAt IS NULL. Unique drepKeyHash
+  // is enforced via a partial index on active rows (see migration).
+  removedAt   DateTime? @map("removed_at") @db.Timestamptz(6)
+
+  multisigKey BoardMultisigKey?
+
+  @@index([removedAt])
+  @@map("board_seat")
+}
+
+// §15 — per-board-member multisig signing key. One row per seat. Used by
+// MultisigConfig assembly: once every seat has a key, the platform composes
+// the `atLeast 3 of 5` native script and stores its derived address.
+model BoardMultisigKey {
+  id                   String   @id @default(uuid()) @db.Uuid
+  boardSeatId          String   @unique @map("board_seat_id") @db.Uuid
+  userId               String   @map("user_id") @db.Uuid
+  paymentKeyHash       String   @unique @map("payment_key_hash")
+  paymentBech32        String?  @map("payment_bech32")
+  hardwareAttested     Boolean  @default(false) @map("hardware_attested")
+  attestationSignature String   @map("attestation_signature")
+  attestationKey       String   @map("attestation_key")
+  attestationTs        String   @map("attestation_ts")
+  submittedAt          DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
+
+  boardSeat BoardSeat @relation(fields: [boardSeatId], references: [id])
+  user      AppUser   @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("board_multisig_key")
+}
+
+// §15.3 — every HOT_WALLET → TREASURY sweep tx (board-triggered or sysadmin).
+// Persisted so the Treasury "Hot wallet history" UI can show what actually
+// moved and link the explorer, even after a page refresh. Top-ups go the
+// other way and are already persisted as MultisigAction rows.
+model HotWalletSweep {
+  id                  String   @id @default(uuid()) @db.Uuid
+  txHash              String   @unique @map("tx_hash")
+  amountLovelace      BigInt   @map("amount_lovelace")
+  fromAddress         String   @map("from_address")
+  toAddress           String   @map("to_address")
+  initiatedByUserId   String?  @map("initiated_by_user_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  initiatedBy AppUser? @relation(fields: [initiatedByUserId], references: [id])
+
+  @@index([createdAt(sort: Desc)])
+  @@map("hot_wallet_sweep")
+}
+
+// §15 — the assembled multisig. The active row is the most recent one with
+// replacedAt IS NULL; older configs are kept around so the UI can show prior
+// addresses (still on-chain holding funds until a migration tx runs) and so
+// past payment history stays meaningful after rotation.
+model MultisigConfig {
+  id                 String    @id @default(uuid()) @db.Uuid
+  scriptJson         Json      @map("script_json")
+  scriptHash         String    @unique @map("script_hash")
+  bech32Address      String    @unique @map("bech32_address")
+  threshold          Int
+  totalKeys          Int       @map("total_keys")
+  assembledAt        DateTime  @default(now()) @map("assembled_at") @db.Timestamptz(6)
+  // §15.2 — set when a successor MultisigConfig is assembled.
+  replacedAt         DateTime? @map("replaced_at") @db.Timestamptz(6)
+  replacedByConfigId String?   @map("replaced_by_config_id") @db.Uuid
+
+  replacedBy        MultisigConfig?  @relation("MultisigSuccession", fields: [replacedByConfigId], references: [id])
+  predecessors      MultisigConfig[] @relation("MultisigSuccession")
+  migrationsFrom    MultisigAction[] @relation("MultisigActionFromConfig")
+  migrationsTo      MultisigAction[] @relation("MultisigActionToConfig")
+  buckets           TreasuryBucket[]
+
+  @@map("multisig_config")
+}
+
+// §15.5 — labeled treasury sub-addresses sharing the same multisig. Each
+// bucket = wrapped multisig script with a label hash embedded, producing a
+// distinct on-chain address while preserving the N-of-N signing requirement.
+// `isPrimary` flags the bare (unlabeled) multisig address; non-primary rows
+// are board-created buckets ("Submission fees", "Rewards", …).
+model TreasuryBucket {
+  id            String   @id @default(uuid()) @db.Uuid
+  configId      String   @db.Uuid
+  label         String
+  scriptJson    Json
+  scriptHash    String   @unique
+  bech32Address String   @unique
+  isPrimary     Boolean  @default(false)
+  // §15.6 — per-operation default flags. At most one bucket per (config, op)
+  // can be true (enforced by partial unique indexes in migration). When
+  // false everywhere, platform-generated actions fall back to the primary.
+  // OUTBOUND: where the platform spends FROM for each kind.
+  isDefaultFunding    Boolean @default(false) @map("is_default_funding")
+  isDefaultRewards    Boolean @default(false) @map("is_default_rewards")
+  isDefaultOperations Boolean @default(false) @map("is_default_operations")
+  // INBOUND: where the platform tells submitters to pay INTO.
+  isDefaultSubmissionFees Boolean @default(false) @map("is_default_submission_fees")
+  isDefaultPledge         Boolean @default(false) @map("is_default_pledge")
+  createdById   String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  config        MultisigConfig   @relation(fields: [configId], references: [id], onDelete: Cascade)
+  createdBy     AppUser?         @relation(fields: [createdById], references: [id])
+  actionsAsSource MultisigAction[] @relation("MultisigActionSourceBucket")
+
+  @@unique([configId, label])
+  @@map("treasury_bucket")
+}
+
+// Singleton (id always 1) — platform-wide operational state.
+model PlatformState {
+  id                Int       @id @default(1)
+  genesisApprovedAt DateTime? @map("genesis_approved_at") @db.Timestamptz(6)
+  genesisApprovedBy String?   @map("genesis_approved_by") @db.Uuid
+  genesisPayload    Json?     @map("genesis_payload")
+  maintenanceMode   Boolean   @default(false) @map("maintenance_mode")
+  paused            Boolean   @default(false)
+
+  approver AdminUser? @relation("GenesisApprover", fields: [genesisApprovedBy], references: [id])
+
+  @@map("platform_state")
+}

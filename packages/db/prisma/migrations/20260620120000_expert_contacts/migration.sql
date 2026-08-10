@@ -1,0 +1,3 @@
+ALTER TABLE "expert" ADD COLUMN "email" TEXT DEFAULT '';
+ALTER TABLE "expert" ADD COLUMN "telegram" TEXT DEFAULT '';
+ALTER TABLE "expert" ADD COLUMN "social_links" TEXT[] DEFAULT ARRAY[]::TEXT[];

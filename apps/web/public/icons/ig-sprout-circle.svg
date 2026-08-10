@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Innovation &amp; Growth DAO">
+  <circle cx="32" cy="32" r="30" fill="#059669"/>
+  <ellipse cx="32" cy="50" rx="11" ry="4" fill="#ffffff" opacity="0.45"/>
+  <path d="M32 49 V28" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M32 38 C23 38 17 32 17 24 C26 24 32 30 32 38 Z" fill="#ffffff"/>
+  <path d="M32 31 C41 31 47 25 47 17 C38 17 32 23 32 31 Z" fill="#ffffff"/>
+</svg>

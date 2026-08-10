@@ -1,0 +1,24 @@
+{
+  "founding_board": [
+    {
+      "name": "Alice (Founding Board)",
+      "drep_id": "drep1y22y7e70anzrjy8dker0k8q7350gu49dtrd3gpwgc5f84zq80yv0z"
+    },
+    {
+      "name": "Dave (Founding Board)",
+      "drep_id": "drep1y26xrktxrqqsd7yqs8tfpgvraynw29hsvzrkl5mgqnqffwsv8dyvz"
+    },
+    {
+      "name": "Erin (Founding Board)",
+      "drep_id": "drep1ygne46zv9vp2utuw50c6xex5dtr2mcqetjc6wp0djrke4ys0slh40"
+    },
+    {
+      "name": "Frank (Founding Board)",
+      "drep_id": "drep1ygeace557eucst8legz7d8q28wk9047ua2u45zn6026yn0chzncke"
+    },
+    {
+      "name": "Grace (Founding Board)",
+      "drep_id": "drep1yg8flsxc8lj7dw60wg4mcfsg6s9k59esgcdnrjtgvp76wys2dfqpj"
+    }
+  ]
+}

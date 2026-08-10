@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="DRep DAO">
+  <circle cx="32" cy="32" r="30" fill="#4f46e5"/>
+  <circle cx="32" cy="32" r="19" fill="#6366f1"/>
+  <circle cx="32" cy="32" r="19" fill="none" stroke="#ffffff" stroke-width="4"/>
+  <path d="M13 32 H51" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M17.5 21 H46.5 M17.5 43 H46.5" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <ellipse cx="32" cy="32" rx="8.5" ry="19" fill="none" stroke="#ffffff" stroke-width="3.5"/>
+</svg>

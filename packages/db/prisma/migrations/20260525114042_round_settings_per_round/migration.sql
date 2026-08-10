@@ -1,0 +1,16 @@
+-- AlterTable
+ALTER TABLE "round" ADD COLUMN     "fee_cap_per_round_ada" INTEGER,
+ADD COLUMN     "fee_commercial_cap_ada" INTEGER,
+ADD COLUMN     "fee_commercial_pct" INTEGER,
+ADD COLUMN     "fee_oss_cap_ada" INTEGER,
+ADD COLUMN     "fee_oss_pct" INTEGER,
+ADD COLUMN     "milestone_auto_extension_days" INTEGER,
+ADD COLUMN     "milestone_board_extra_extension_days" INTEGER,
+ADD COLUMN     "milestone_check_period_days" INTEGER,
+ADD COLUMN     "milestone_notification_days_before_end" INTEGER,
+ADD COLUMN     "pledge_grace_days" INTEGER,
+ADD COLUMN     "pledge_threshold_ada" INTEGER,
+ADD COLUMN     "quick_poll_duration_hours" INTEGER,
+ADD COLUMN     "quick_poll_max_extensions" INTEGER,
+ADD COLUMN     "quick_poll_participation_pct" INTEGER,
+ADD COLUMN     "reward_fixed_pct" INTEGER;

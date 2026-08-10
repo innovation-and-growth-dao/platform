@@ -1,0 +1,12 @@
+-- The initial board_seat migration created a FULL unique INDEX on drep_key_hash
+-- (board_seat_drep_key_hash_key). The multisig-rotation migration intended to
+-- replace it with a PARTIAL unique index (active rows only) but used
+-- `DROP CONSTRAINT IF EXISTS`, which is a no-op against a unique INDEX — so the
+-- full index lingered. That made re-adding a soft-deleted (removed) board member
+-- fail with a P2002 unique-constraint error on drep_key_hash.
+--
+-- Drop the lingering full index. The partial index
+-- board_seat_active_drep_key_hash_key (WHERE removed_at IS NULL) remains and is
+-- the intended uniqueness rule: at most one ACTIVE seat per drep key hash, while
+-- soft-deleted rows are preserved for the multisig-key history.
+DROP INDEX IF EXISTS "board_seat_drep_key_hash_key";

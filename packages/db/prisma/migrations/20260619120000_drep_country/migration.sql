@@ -1,0 +1,1 @@
+ALTER TABLE "drep" ADD COLUMN "country" TEXT NOT NULL DEFAULT '';

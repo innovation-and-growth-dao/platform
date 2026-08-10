@@ -1,0 +1,46 @@
+{
+  "name": "innovation-growth-dao",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Innovation & Growth DAO — Cardano governance & funding platform (off-chain source of truth, on-chain anchoring)",
+  "license": "MIT",
+  "author": "Innovation & Growth DAO",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/innovation-and-growth-dao/platform.git"
+  },
+  "homepage": "https://github.com/innovation-and-growth-dao/platform#readme",
+  "bugs": {
+    "url": "https://github.com/innovation-and-growth-dao/platform/issues"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "turbo run test",
+    "test:e2e": "node tools/test-all.cjs",
+    "db:generate": "pnpm --filter @drep-dao/db generate",
+    "db:migrate": "pnpm --filter @drep-dao/db migrate",
+    "db:seed": "pnpm --filter @drep-dao/db seed",
+    "bootstrap:board": "pnpm --filter @drep-dao/db exec tsx prisma/bootstrap-board.ts",
+    "seed:personas": "pnpm --filter @drep-dao/db exec tsx prisma/seed-personas.ts",
+    "seed:persona-wallets": "pnpm --filter @drep-dao/db exec tsx prisma/seed-persona-wallets.ts",
+    "admin:create": "pnpm --filter @drep-dao/api exec tsx scripts/admin-create.ts",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down"
+  },
+  "devDependencies": {
+    "@emurgo/cardano-message-signing-nodejs": "^1.1.0",
+    "@emurgo/cardano-serialization-lib-nodejs": "^15.0.3",
+    "bip39": "^3.1.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# turbo
+.turbo/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+*.skey
+*.vkey
+*.addr
+wallet.json
+tools/test-wallets.json
+tools/persona-wallets.json
+tools/heidi-delegators.json
+
+# prisma
+packages/db/prisma/*.db
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# test / coverage
+coverage/
