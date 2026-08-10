@@ -13,6 +13,7 @@ verifiability. There is **no Plutus/Aiken on-chain logic** (see design §21.2).
 > selected at build time via `NEXT_PUBLIC_APP_NAME`. See
 > [`apps/web/src/lib/brand.ts`](apps/web/src/lib/brand.ts).
 
+- **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **User guide:** [docs/USER-GUIDE.md](docs/USER-GUIDE.md)
 - **Full design:** [docs/DESIGN.md](docs/DESIGN.md)
 - **Deployment:** [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
@@ -35,7 +36,9 @@ innovation-growth-dao/
 └── docs/           design, user guide, deployment, parameters, test report
 ```
 
-Monorepo: **pnpm workspaces + Turborepo**.
+Monorepo: **pnpm workspaces + Turborepo**. For components, request/auth flow,
+background jobs and the Cardano integration, see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Prerequisites
 
