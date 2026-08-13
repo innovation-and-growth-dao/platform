@@ -12,6 +12,7 @@ import { RoundsSection } from './rounds-section';
 import { DaoOverview } from './dao-overview';
 import { DaoMembersDirectory } from './dao-members-directory';
 import { GovernanceSetup } from './governance-setup';
+import { OnchainSourcePanel } from './onchain-source-panel';
 import { OnChainProofs } from './on-chain-proofs';
 import { TreasuryOverview } from './treasury-overview';
 import { ActiveProposals } from './active-proposals';
@@ -174,7 +175,10 @@ export function HomeShell() {
         ) : view === 'treasury' ? (
           <TreasuryOverview />
         ) : view === 'setup' && isBoard ? (
-          <GovernanceSetup />
+          <div className="space-y-4">
+            <OnchainSourcePanel />
+            <GovernanceSetup />
+          </div>
         ) : null}
       </main>
 

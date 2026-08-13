@@ -538,6 +538,24 @@ export const governanceApi = {
   wallets: () => request<WalletStatus>('/admin/governance/wallets'),
 };
 
+// §22 — on-chain data source: ordered fallback list + credentials (Blockfrost key, db-sync URL).
+export interface OnchainSourceConfig {
+  order: string[];
+  available: string[];
+  network: string;
+  koios: { tokenConfigured: boolean; hint: string | null };
+  blockfrost: { configured: boolean; hint: string | null };
+  dbsync: { configured: boolean; hint: string | null };
+}
+export const onchainSourceApi = {
+  get: () => request<OnchainSourceConfig>('/admin/governance/onchain-source'),
+  update: (dto: { order?: string[]; koiosApiToken?: string; blockfrostProjectId?: string; dbsyncUrl?: string }) =>
+    request<OnchainSourceConfig>('/admin/governance/onchain-source', {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+};
+
 export interface PendingApplication {
   drepId: string;
   drepIdOnchain: string;
