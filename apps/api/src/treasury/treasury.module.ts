@@ -15,6 +15,6 @@ import { TreasuryBucketsController } from './treasury-buckets.controller';
   imports: [AuthModule, CardanoModule],
   controllers: [TreasuryController, BoardMultisigController, TreasuryBucketsController],
   providers: [TreasuryService, BoardMultisigService, MultisigBroadcastService, TreasuryBucketsService, PledgeReturnService, BoardGuard],
-  exports: [BoardMultisigService, TreasuryBucketsService, PledgeReturnService],
+  exports: [TreasuryService, BoardMultisigService, TreasuryBucketsService, PledgeReturnService],
 })
 export class TreasuryModule {}

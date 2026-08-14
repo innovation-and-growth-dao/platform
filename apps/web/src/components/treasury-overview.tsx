@@ -9,6 +9,7 @@ import { TreasuryBucketsPanel } from './treasury-buckets-panel';
 import { TreasuryTransactions } from './treasury-transactions';
 import { useTreasuryAutoRefresh } from '@/lib/treasury-refresh';
 import { useT } from '@/lib/prefs-context';
+import { useAuth } from '@/lib/auth-context';
 
 const ada = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 const BUCKET_COLOR: Record<string, string> = {
@@ -20,6 +21,7 @@ const roundColor = 'bg-violet-500';
 /** §15 — Treasury overview: budget buckets (allocated/spent/remaining) + balances. */
 export function TreasuryOverview() {
   const t = useT();
+  const { profile } = useAuth();
   const [subTab, setSubTab] = useState<'overview' | 'transactions' | 'setup'>('overview');
   const [data, setData] = useState<Overview | null>(null);
   const [buckets, setBuckets] = useState<TreasuryBucket[]>([]);
@@ -53,7 +55,7 @@ export function TreasuryOverview() {
 
       {/* §15 — Overview | Transactions sub-menu. */}
       <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-        {([['overview', t('Overview')], ['transactions', t('Transactions')], ['setup', t('Treasury multisig setup')]] as const).map(([key, label]) => (
+        {(([['overview', t('Overview')], ['transactions', t('Transactions')], ...(profile ? [['setup', t('Treasury multisig setup')]] : [])] as const) as ['overview' | 'transactions' | 'setup', string][]).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setSubTab(key)}

@@ -13,6 +13,8 @@ export interface Brand {
   icon: string;
   /** <meta name="description"> for the deployment. */
   description: string;
+  /** Which public landing to show: a funding DAO (rounds/treasury) or a pure governance DAO. */
+  kind: 'funding' | 'governance';
 }
 
 // Alternatives for each brand are previewed at /icons — swap the path here and rebuild.
@@ -20,12 +22,14 @@ const INNOVATION_GROWTH: Brand = {
   name: 'Innovation & Growth DAO',
   icon: '/icons/ig-sprout.svg', // green sprouting seed
   description: 'Cardano innovation & growth funding DAO',
+  kind: 'funding',
 };
 
 const DREP_DAO: Brand = {
   name: 'DRep DAO',
   icon: '/icons/drep-globe.svg', // globe
   description: 'Cardano governance DAO platform',
+  kind: 'governance',
 };
 
 /** Resolved once at build time (NEXT_PUBLIC_ vars are inlined, so this is safe on the client). */

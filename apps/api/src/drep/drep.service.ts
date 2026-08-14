@@ -162,7 +162,7 @@ export class DrepService {
    * the bio / socials / contact and a count of admission votes cast (board members
    * only — non-board members never get to vote on join applications).
    */
-  async getDaoMemberDetail(drepIdOnchain: string) {
+  async getDaoMemberDetail(drepIdOnchain: string, opts: { includeContact?: boolean } = { includeContact: true }) {
     const list = await this.listDaoMembers();
     const summary = list.find((m) => m.drepId === drepIdOnchain);
     if (!summary) throw new NotFoundException('not a current DAO member');
@@ -227,7 +227,9 @@ export class DrepService {
       ...summary,
       bio: drep?.bio ?? null,
       socials: (drep?.socials as Record<string, string> | null) ?? null,
-      contact: (drep?.contact as Record<string, string> | null) ?? null,
+      // §2.1 — contact (email/telegram) is PRIVATE: only shown to authenticated viewers.
+      // Anonymous public visitors get null so the directory stays browsable without leaking it.
+      contact: opts.includeContact ? ((drep?.contact as Record<string, string> | null) ?? null) : null,
       subcategoryIds: drep?.subcategoryIds ?? [],
       // Admission votes the member cast as a board reviewer (only board has any).
       admissionVotesCast: { yes, no, total: yes + no },

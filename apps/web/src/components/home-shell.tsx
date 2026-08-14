@@ -7,6 +7,7 @@ import { useUrlNav } from '@/lib/use-url-nav';
 import { brand } from '@/lib/brand';
 import { NavIcon } from './nav-icons';
 import { ConnectWallet } from './connect-wallet';
+import { PublicLanding } from './public-landing';
 import { MemberArea } from './member-area';
 import { RoundsSection } from './rounds-section';
 import { DaoOverview } from './dao-overview';
@@ -42,6 +43,8 @@ const NAV: { key: View; label: string; icon: string; boardOnly?: boolean }[] = [
   { key: 'treasury', label: 'Treasury', icon: 'landmark' },
   { key: 'setup', label: 'Platform setup', icon: 'settings', boardOnly: true },
 ];
+// Views a logged-out visitor may browse read-only (no My area, no board Setup).
+const PUBLIC_VIEWS: View[] = ['overview', 'members', 'rounds', 'proposals', 'treasury', 'proofs'];
 
 export function HomeShell() {
   const { profile, loading } = useAuth();
@@ -79,26 +82,83 @@ export function HomeShell() {
   // Match member-area's definition (EXPERT handled inside the hook via the reward-address nag)
   // so the left-nav badge, the login-box badge, and the in-area tab badges all agree.
   const canVote = (profile?.roles.includes('DREP') || profile?.roles.includes('DAO_MEMBER') || profile?.roles.includes('BOARD')) ?? false;
+  // Top-right "Connect wallet" dropdown on the logged-out public shell. Declared here
+  // (before the logged-out early return) so hook order stays stable across both renders.
+  const [walletOpen, setWalletOpen] = useState(false);
   // Bumped by the login-box "refresh" button to force an immediate re-check of the to-dos.
   const [todoRefresh, setTodoRefresh] = useState(0);
   const todoCounts = useTodoCounts(isBoard, canVote, !!profile, todoRefresh);
   const myAreaTodo = todoTotal(todoCounts);
 
-  // Logged out (or restoring): centered landing with the wallet login.
+  // Logged out (or restoring): the public, read-only shell — a top bar with the brand,
+  // a read-only nav, and "Connect wallet" top-right. Everyone sees live public data; only
+  // signing in unlocks "My area" and anything actionable.
   if (loading || !profile) {
+    // Public views only — no "My area", no board Setup. A stale ?view=me falls back to overview.
+    const pubView: View = (PUBLIC_VIEWS.includes(view) ? view : 'overview') as View;
     return (
-      <main className="mx-auto max-w-2xl px-6 py-16">
-        <h1 className="text-3xl font-bold tracking-tight">{brand.name}</h1>
-        <p className="mt-2 text-neutral-600 dark:text-neutral-400">
-          {t('Cardano governance platform (Preprod).')}
-        </p>
-        <div className="mt-6 rounded-xl border border-neutral-300 bg-white p-5 shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
-          <ConnectWallet />
-        </div>
-        <div className="mt-8 border-t border-neutral-200 pt-3 text-xs text-neutral-400 dark:border-neutral-800">
-          <HealthBadge />
-        </div>
-      </main>
+      <div className="min-h-screen">
+        <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/85 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/80">
+          <div className="mx-auto flex max-w-6xl items-center gap-4 px-5 py-3">
+            <button onClick={() => setView('overview')} className="flex items-center gap-2.5 font-semibold tracking-tight">
+              <img src={brand.icon} alt="" className="h-7 w-7" />
+              <span className="hidden sm:inline">{brand.name.replace(/ DAO$/, '')}</span>
+            </button>
+            <nav className="ml-2 hidden items-center gap-0.5 md:flex">
+              {NAV.filter((n) => PUBLIC_VIEWS.includes(n.key)).map((n) => (
+                <button key={n.key} onClick={() => setView(n.key)}
+                  className={`rounded-lg px-3 py-1.5 text-[13px] ${
+                    pubView === n.key
+                      ? 'bg-neutral-100 font-semibold text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
+                      : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+                  }`}>
+                  {t(n.label === 'DAO Member overview' ? 'Overview' : n.label)}
+                </button>
+              ))}
+              <span className="ml-1 inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[13px] text-neutral-400 opacity-60 dark:text-neutral-500">
+                {t('My area')}<span className="text-emerald-500">•</span>
+              </span>
+            </nav>
+            <div className="relative ml-auto flex items-center gap-3">
+              <button onClick={() => setWalletOpen((o) => !o)}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-[13.5px] font-semibold text-white hover:bg-emerald-700">
+                {t('Connect wallet')}
+              </button>
+              {walletOpen ? (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setWalletOpen(false)} />
+                  <div className="absolute right-0 top-12 z-20 w-80 rounded-xl border border-neutral-200 bg-white p-4 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+                    <ConnectWallet />
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-6xl px-5 py-6">
+          {openProposal ? (
+            <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+              <ProposalDetail id={openProposal} onBack={() => setParams({ proposal: null })} />
+            </section>
+          ) : pubView === 'members' ? (
+            <DaoMembersDirectory />
+          ) : pubView === 'rounds' ? (
+            <RoundsSection />
+          ) : pubView === 'proposals' ? (
+            <ActiveProposals />
+          ) : pubView === 'treasury' ? (
+            <TreasuryOverview />
+          ) : pubView === 'proofs' ? (
+            <OnChainProofs />
+          ) : (
+            <PublicLanding onConnect={() => setWalletOpen(true)} onExplore={() => setView('proposals')} />
+          )}
+          <div className="mt-8 border-t border-neutral-200 pt-3 text-xs text-neutral-400 dark:border-neutral-800">
+            <HealthBadge />
+          </div>
+        </main>
+      </div>
     );
   }
 

@@ -1420,6 +1420,27 @@ export interface PublicConfig {
 }
 export const configApi = { get: () => request<PublicConfig>('/config') };
 
+// §2 — public, unauthenticated snapshot for the logged-out landing page.
+export interface PublicOverview {
+  network: string;
+  admissionOpen: boolean;
+  treasuryBalanceAda: number | null;
+  members: { votingDReps: number; experts: number };
+  board: { seats: number; elected: boolean };
+  proposals: { approved: number; inReview: number; rejected: number; total: number };
+  internalProposals: { active: number; passed: number; total: number };
+  activeRound: {
+    number: number;
+    name: string;
+    status: string;
+    budgetAda: number;
+    rewardsPoolAda: number;
+    eligibleCount: number;
+    proposalCount: number;
+  } | null;
+}
+export const publicApi = { overview: () => request<PublicOverview>('/public/overview') };
+
 // -------- Per-user preferences (§20): personal block explorer --------
 export interface UserPreferences {
   explorer: string | null; // cardanoscan | cexplorer | adastat | custom | null (=platform default)
