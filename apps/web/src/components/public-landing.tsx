@@ -40,17 +40,18 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
 
   const round = data?.activeRound ?? null;
   const stageIdx = Math.max(0, STAGES.findIndex((s) => s.key === round?.status));
+  const n = (v: number) => v.toLocaleString();
 
-  // ---- hero copy differs by edition ----
+  // ---- hero copy differs by edition (values composed OUTSIDE t() so parts translate) ----
   const hero = governance
     ? {
-        badge: data ? (data.board.elected ? t(`Board elected · ${data.board.seats} seats`) : t('No board yet — DReps can propose one')) : null,
+        badge: data ? (data.board.elected ? `${t('Board elected')} · ${data.board.seats} ${t('seats')}` : t('No board yet — DReps can propose one')) : null,
         title: t('Govern Cardano, together.'),
         blurb: t('A community of DReps that debate, propose and vote on-chain. Anyone can watch; connect a wallet to join and vote — no gatekeeping.'),
-        explore: t('Explore proposals'),
+        explore: t('Meet the DReps'),
       }
     : {
-        badge: round ? t(`Round ${round.number} open — ${round.status === 'SUBMISSION' ? 'accepting proposals' : round.status.toLowerCase()}`) : null,
+        badge: round ? `${t('Round')} ${round.number} — ${t('accepting proposals')}` : null,
         title: t('Fund the next wave of Cardano.'),
         blurb: t('A community treasury, governed by DReps, spent in the open. Explore everything here — connect a wallet when you’re ready to submit or vote.'),
         explore: t('Explore proposals'),
@@ -89,11 +90,11 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
       <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         {governance ? (
           <>
-            <Tile bg="#0e7a4b" label={t('Voting DReps')} big={(data?.members.votingDReps ?? 0).toString()}
+            <Tile bg="#0e7a4b" label={t('Voting DReps')} big={`${data?.members.votingDReps ?? 0}`}
               sub={data?.admissionOpen ? t('Open admission — join freely') : t('Board-gated admission')} />
-            <Tile bg="#0e6f73" label={t('Governance proposals')} big={(data?.internalProposals.total ?? 0).toString()}
-              sub={t(`${data?.internalProposals.passed ?? 0} passed · ${data?.internalProposals.active ?? 0} in voting`)} />
-            <Tile bg="#4f8f2f" label={t('Board')} big={data ? (data.board.elected ? data.board.seats.toString() : '—') : '—'}
+            <Tile bg="#0e6f73" label={t('Governance proposals')} big={`${data?.internalProposals.total ?? 0}`}
+              sub={`${data?.internalProposals.passed ?? 0} ${t('passed')} · ${data?.internalProposals.active ?? 0} ${t('in voting')}`} />
+            <Tile bg="#4f8f2f" label={t('Board')} big={data ? (data.board.elected ? `${data.board.seats}` : '—') : '—'}
               sub={data?.board.elected ? t('seats elected') : t('not yet elected')} />
             <Tile bg="#173a2a" label={t('Governance')} big={data?.admissionOpen ? t('Open') : t('Gated')}
               sub={t('Any registered DRep can join & vote')} />
@@ -101,14 +102,14 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
         ) : (
           <>
             <Tile bg="#0e7a4b" label={t('Treasury balance')} big={ada(data?.treasuryBalanceAda)}
-              sub={round ? t(`₳ ${round.budgetAda.toLocaleString()} committed to Round ${round.number}`) : t('On-chain, live')} />
-            <Tile bg="#0e6f73" label={round ? t(`Round ${round.number} budget`) : t('Round budget')}
+              sub={round ? `₳ ${n(round.budgetAda)} ${t('committed to Round')} ${round.number}` : t('On-chain, live')} />
+            <Tile bg="#0e6f73" label={round ? `${t('Round')} ${round.number} ${t('budget')}` : t('Round budget')}
               big={round ? ada(round.budgetAda) : '—'}
-              sub={round ? t(`+ ₳ ${round.rewardsPoolAda.toLocaleString()} rewards pool`) : t('No active round')} />
-            <Tile bg="#4f8f2f" label={t('Voting DReps')} big={(data?.members.votingDReps ?? 0).toString()}
-              sub={t(`${data?.members.experts ?? 0} experts advising`)} />
-            <Tile bg="#173a2a" label={t('Proposals')} big={(data?.proposals.total ?? 0).toString()}
-              sub={t(`${data?.proposals.approved ?? 0} approved · ${data?.proposals.inReview ?? 0} in review`)} />
+              sub={round ? `+ ₳ ${n(round.rewardsPoolAda)} ${t('rewards pool')}` : t('No active round')} />
+            <Tile bg="#4f8f2f" label={t('Voting DReps')} big={`${data?.members.votingDReps ?? 0}`}
+              sub={`${data?.members.experts ?? 0} ${t('experts advising')}`} />
+            <Tile bg="#173a2a" label={t('Proposals')} big={`${data?.proposals.total ?? 0}`}
+              sub={`${data?.proposals.approved ?? 0} ${t('approved')} · ${data?.proposals.inReview ?? 0} ${t('in review')}`} />
           </>
         )}
       </div>
@@ -126,7 +127,7 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
             </div>
           ))}
           <span className="ml-auto text-[12.5px] text-neutral-500 dark:text-neutral-400">
-            {data?.board.elected ? t(`Board of ${data.board.seats} · DReps propose & vote on governance`) : t('DReps can propose the founding board')}
+            {data?.board.elected ? `${t('Board of')} ${data.board.seats} · ${t('DReps propose & vote on governance')}` : t('DReps can propose the founding board')}
           </span>
         </div>
       ) : round ? (
@@ -145,7 +146,7 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
             </div>
           ))}
           <span className="ml-auto text-[12.5px] text-neutral-500 dark:text-neutral-400">
-            {t(`Round ${round.number} · ${round.name}`)} · {data?.admissionOpen ? t('open admission') : t('board-gated admission')}
+            {t('Round')} {round.number} · {round.name} · {data?.admissionOpen ? t('open admission') : t('board-gated admission')}
           </span>
         </div>
       ) : null}
@@ -154,7 +155,7 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-[12.5px] text-neutral-500 dark:text-neutral-400">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          {t(`Live on ${data?.network ?? 'Preprod'}`)}
+          {t('Live on')} {data?.network ?? 'Preprod'}
         </span>
         <span>{t('Every vote & payment anchored on-chain')}</span>
         {data?.admissionOpen ? <span>{t('Open admission — any registered DRep can join & vote')}</span> : null}
