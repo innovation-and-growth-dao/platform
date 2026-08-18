@@ -725,19 +725,63 @@ export class CardanoQueryService {
   /** Controlled stake per stake address via Koios /account_info total_balance. */
   private async accountStakeViaKoios(stakeAddresses: string[]): Promise<Map<string, bigint>> {
     const out = new Map<string, bigint>(stakeAddresses.map((a) => [a, 0n]));
-    const res = await this.koiosFetch(`/account_info`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ _stake_addresses: stakeAddresses }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) throw new Error(`koios /account_info: ${res.status}`);
-    const rows = (await res.json()) as { stake_address: string; total_balance: string | null }[];
-    for (const r of rows) {
-      if (!out.has(r.stake_address)) continue;
-      try { out.set(r.stake_address, r.total_balance ? BigInt(r.total_balance) : 0n); } catch { /* leave 0 */ }
+    // Koios caps the number of addresses per /account_info request — chunk so large
+    // delegator sets don't get rejected (which previously zeroed a DRep's voting power).
+    const CHUNK = 50;
+    for (let i = 0; i < stakeAddresses.length; i += CHUNK) {
+      const batch = stakeAddresses.slice(i, i + CHUNK);
+      const res = await this.koiosFetch(`/account_info`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _stake_addresses: batch }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) throw new Error(`koios /account_info: ${res.status}`);
+      const rows = (await res.json()) as { stake_address: string; total_balance: string | null }[];
+      for (const r of rows) {
+        if (!out.has(r.stake_address)) continue;
+        try { out.set(r.stake_address, r.total_balance ? BigInt(r.total_balance) : 0n); } catch { /* leave 0 */ }
+      }
     }
     return out;
+  }
+
+  /**
+   * §4 — a DRep's total on-chain voting power + delegator count, straight from Koios
+   * `drep_info` (a single batched call). This is the epoch-boundary figure the whole
+   * ecosystem shows; it's reliable even for DReps with thousands of delegators, unlike
+   * summing every delegator's stake live (which Koios can't do in one shot).
+   */
+  private async drepInfoBatchKoios(drepIds: string[]): Promise<Map<string, { amount: bigint; delegators: number }>> {
+    const out = new Map<string, { amount: bigint; delegators: number }>();
+    if (drepIds.length === 0) return out;
+    const res = await this.koiosFetch(`/drep_info`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ _drep_ids: drepIds }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) throw new Error(`koios /drep_info: ${res.status}`);
+    const rows = (await res.json()) as { drep_id: string; amount: string | null; live_delegator_count: number | null }[];
+    for (const r of rows) {
+      let amount = 0n;
+      try { amount = r.amount ? BigInt(r.amount) : 0n; } catch { amount = 0n; }
+      out.set(r.drep_id, { amount, delegators: Number(r.live_delegator_count ?? 0) });
+    }
+    return out;
+  }
+
+  /** All vote-delegator stake addresses of a DRep via Koios (paginated, 1000/page). */
+  private async drepDelegatorAddrsKoios(drepId: string): Promise<string[]> {
+    const all: string[] = [];
+    for (let offset = 0; offset < 100000; offset += 1000) {
+      const res = await this.koiosFetch(`/drep_delegators?_drep_id=${encodeURIComponent(drepId)}&offset=${offset}&limit=1000`, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) throw new Error(`koios /drep_delegators ${res.status}`);
+      const rows = (await res.json()) as { stake_address: string }[];
+      for (const r of rows) if (r.stake_address) all.push(r.stake_address);
+      if (rows.length < 1000) break;
+    }
+    return all;
   }
 
   /**
@@ -1078,30 +1122,35 @@ export class CardanoQueryService {
     minDelegatorStakeLovelace: bigint,
   ): Promise<Map<string, { votingPowerLovelace: bigint; delegators: number; ownVotingPowerLovelace: bigint; qualifyingDelegators: number }>> {
     const out = new Map(entries.map((e) => [e.drepId, { votingPowerLovelace: 0n, delegators: 0, ownVotingPowerLovelace: 0n, qualifyingDelegators: 0 }]));
-    const addrsByDrep = new Map<string, string[]>();
-    const allAddrs = new Set<string>();
-    let allFailed = true;
-    await Promise.all(entries.map(async (e) => {
-      const res = await this.koiosFetch(`/drep_delegators?_drep_id=${encodeURIComponent(e.drepId)}`, { signal: AbortSignal.timeout(15000) });
-      if (!res.ok) throw new Error(`koios /drep_delegators ${res.status}`);
-      allFailed = false;
-      const rows = (await res.json()) as { stake_address: string }[];
-      const addrs = rows.map((r) => r.stake_address).filter(Boolean);
-      addrsByDrep.set(e.drepId, addrs);
-      addrs.forEach((a) => allAddrs.add(a));
-    }));
-    if (allFailed) throw new Error('koios /drep_delegators failed for all DReps');
-    const stake = await this.accountStakeViaKoios([...allAddrs]);
+
+    // 1) Total voting power + delegator count from drep_info (reliable; throws → source fails over).
+    const info = await this.drepInfoBatchKoios(entries.map((e) => e.drepId));
     for (const e of entries) {
-      const addrs = addrsByDrep.get(e.drepId) ?? [];
-      let total = 0n, own = 0n, qualifying = 0;
-      for (const a of addrs) {
-        const s = stake.get(a) ?? 0n;
-        total += s;
-        if (e.ownStakeAddress && a === e.ownStakeAddress) own = s;
-        if (s >= minDelegatorStakeLovelace) qualifying++;
-      }
-      out.set(e.drepId, { votingPowerLovelace: total, delegators: addrs.length, ownVotingPowerLovelace: own, qualifyingDelegators: qualifying });
+      const i = info.get(e.drepId);
+      if (i) out.set(e.drepId, { ...out.get(e.drepId)!, votingPowerLovelace: i.amount, delegators: i.delegators });
+    }
+
+    // 2) Own voting power + qualifying-delegator count (§14.1 entry gate) — needs per-delegator
+    // stake, so it's best-effort: computed only when a gate actually needs it, skipped for very
+    // large delegator sets (to avoid request storms), and a failure never zeroes the total above.
+    const needsOwn = minDelegatorStakeLovelace > 0n || entries.some((e) => e.ownStakeAddress);
+    const PER_DELEGATOR_CAP = 800;
+    if (needsOwn) {
+      await Promise.all(entries.map(async (e) => {
+        const cur = out.get(e.drepId)!;
+        if (cur.delegators > PER_DELEGATOR_CAP) return; // skip the storm; total already correct
+        try {
+          const addrs = await this.drepDelegatorAddrsKoios(e.drepId);
+          const stake = await this.accountStakeViaKoios(addrs);
+          let own = 0n, qualifying = 0;
+          for (const a of addrs) {
+            const s = stake.get(a) ?? 0n;
+            if (e.ownStakeAddress && a === e.ownStakeAddress) own = s;
+            if (s >= minDelegatorStakeLovelace) qualifying++;
+          }
+          out.set(e.drepId, { ...cur, ownVotingPowerLovelace: own, qualifyingDelegators: qualifying });
+        } catch { /* keep own/qualifying 0 — total from drep_info stands */ }
+      }));
     }
     return out;
   }
