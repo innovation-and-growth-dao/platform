@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { InternalProposalsService } from '../internal-proposals/internal-proposals.service';
 import { BoardService } from '../auth/board.service';
+import { MeritService } from '../merit/merit.service';
 
 const sha256hex = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
 const PUBLIC_STATUSES = ['DRAFT', 'ACTIVE', 'DELETED'];
@@ -19,6 +20,7 @@ export class RuleDocumentsService {
     private readonly prisma: PrismaService,
     private readonly internal: InternalProposalsService,
     private readonly board: BoardService,
+    private readonly merit: MeritService,
   ) {}
 
   private async admittedDrep(userId: string): Promise<boolean> {
@@ -150,10 +152,13 @@ export class RuleDocumentsService {
   }
 
   async create(userId: string, dto: { title: string; contentMd: string }) {
-    if (!(await this.admittedDrep(userId))) throw new ForbiddenException('you must be a Council member to author rule documents — join the Council first (it is free)');
+    const drep = await this.prisma.drep.findUnique({ where: { userId }, select: { id: true, status: true } });
+    if (drep?.status !== 'ADMITTED') throw new ForbiddenException('you must be a Council member to author rule documents — join the Council first (it is free)');
     const doc = await this.prisma.ruleDocument.create({
       data: { title: dto.title.trim(), contentMd: dto.contentMd, ownerUserId: userId, status: 'PRIVATE' },
     });
+    // §13 — +1 merit for authoring a new rule document (no-op while the merit system is disabled).
+    await this.merit.tryAward(drep.id, 'RULE_DOC_SUBMIT', doc.id);
     return this.getOne(doc.id, userId);
   }
 

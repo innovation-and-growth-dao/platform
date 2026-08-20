@@ -34,6 +34,7 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   ONLY_VOTES_WITH_RATIONALE: false, // count only votes that carry an on-chain rationale
   AVOID_PERIOD_MAX_DAYS_PER_YEAR: 42,
   MERIT_POINT_MAX: 200,
+  MERIT_ENABLED: true, // §13 — master switch. On by default for the funding edition: merit is earned and applied to voting power.
   BOARD_REWARD_DEADLINE_DAYS: 30,
   // NOTE: the yearly board reward budget (BOARD_YEARLY_REWARD_ADA) is intentionally
   // NOT listed here — it has a single editing place in Rewards → Board rewards,
@@ -85,6 +86,7 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
   ONLY_VOTES_WITH_RATIONALE: 'Entry: when ON, only votes carrying an on-chain rationale count toward the activity check.',
   AVOID_PERIOD_MAX_DAYS_PER_YEAR: 'Maximum days per year a DRep may mark themselves unavailable.',
   MERIT_POINT_MAX: "Cap on a DRep's merit score (also bounds the voting-power multiplier).",
+  MERIT_ENABLED: 'Use the merit-point system. When off, merit is neither earned nor applied to voting power, and the merit UI (Merit points tab, Merit/×Mult columns, profile merit) is hidden.',
   BOARD_REWARD_DEADLINE_DAYS: 'Days the board has to distribute rewards after a round before a penalty applies.',
   ANCHOR_SCHEDULE_CRON: 'Cron schedule for the daily on-chain anchoring job (informational).',
   CARDANO_EXPLORER: 'Block explorer for on-chain links: cardanoscan, cexplorer, or adastat.',
@@ -332,6 +334,7 @@ export const MeritReason = {
   FILTER_COMPLETE: 'FILTER_COMPLETE', // +1
   MILESTONE_CHECK: 'MILESTONE_CHECK', // +1
   INTERNAL_SUBMIT: 'INTERNAL_SUBMIT', // +1 (drep) / +5 (board)
+  RULE_DOC_SUBMIT: 'RULE_DOC_SUBMIT', // +1 — §27 authored a new rule document
   QUICK_POLL_VOTE: 'QUICK_POLL_VOTE', // +1
   APPLICATION_REVIEW: 'APPLICATION_REVIEW', // +1 — board member decided a submitter application
   MULTISIG_KEY_PROVIDED: 'MULTISIG_KEY_PROVIDED', // +1 — board member submitted their multisig key/address
@@ -345,6 +348,7 @@ export const MeritReason = {
   BOARD_LEDGER_MONTHLY: 'BOARD_LEDGER_MONTHLY', // +2
   BOARD_PAYOUT_SIGNED: 'BOARD_PAYOUT_SIGNED', // +5 per signer — paid a delivered milestone in time
   MISSED_DV: 'MISSED_DV', // -1
+  MISSED_INTERNAL: 'MISSED_INTERNAL', // -1 — missed an internal-proposal vote
   MISSED_FILTER: 'MISSED_FILTER', // -1
   MISSED_MILESTONE: 'MISSED_MILESTONE', // -1
   MISSED_QUICK_POLL: 'MISSED_QUICK_POLL', // -1
@@ -362,6 +366,7 @@ export const MERIT_DELTAS: Record<MeritReason, number> = {
   FILTER_COMPLETE: 1,
   MILESTONE_CHECK: 1,
   INTERNAL_SUBMIT: 1,
+  RULE_DOC_SUBMIT: 1,
   QUICK_POLL_VOTE: 1,
   APPLICATION_REVIEW: 1,
   MULTISIG_KEY_PROVIDED: 1,
@@ -375,6 +380,7 @@ export const MERIT_DELTAS: Record<MeritReason, number> = {
   BOARD_LEDGER_MONTHLY: 2,
   BOARD_PAYOUT_SIGNED: 5,
   MISSED_DV: -1,
+  MISSED_INTERNAL: -1,
   MISSED_FILTER: -1,
   MISSED_MILESTONE: -1,
   MISSED_QUICK_POLL: -1,
