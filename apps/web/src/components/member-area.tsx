@@ -25,6 +25,7 @@ import { BoardActions } from './board-actions';
 import { StopFundingBoardPanel } from './stop-funding-board-panel';
 import { RoundStageControls } from './round-stage-controls';
 import { InternalProposals } from './internal-proposals';
+import { MyRuleDocuments } from './rule-documents';
 import { FeeConfirmations } from './fee-confirmations';
 import { RevenueSharingConfirmations } from './revenue-sharing-confirmations';
 import { ReviewerAssignments } from './reviewer-assignments';
@@ -138,6 +139,8 @@ export function MemberArea() {
       badge: todo.internal,
       node: <InternalProposals />,
     });
+    // §27 — the member's own rule documents (draft, propose for approval, track the vote).
+    tabs.push({ key: 'rules', label: 'My Rule documents', node: <MyRuleDocuments /> });
   }
 
   tabs.push({

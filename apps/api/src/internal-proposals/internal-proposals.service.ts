@@ -145,6 +145,27 @@ export class InternalProposalsService {
       }));
     }
 
+    // §27 — "Approval of a rule document": one published document must be selected. Approval votes
+    // target DRAFT documents; a delete vote can target a DRAFT or ACTIVE one. Submitting freezes the
+    // content hash (below) and locks the document while the vote is live.
+    let ruleDoc: { id: string; contentMd: string } | null = null;
+    if (dto.internalType === InternalType.RULE_APPROVAL) {
+      if (!dto.ruleDocumentId) throw new BadRequestException('select a rule document for this proposal');
+      const doc = await this.prisma.ruleDocument.findUnique({ where: { id: dto.ruleDocumentId } });
+      if (!doc || doc.status === 'PRIVATE' || doc.status === 'DELETED') {
+        throw new BadRequestException('the rule document must be a published (draft or active) document');
+      }
+      if (!dto.ruleDeleteRequested && doc.status !== 'DRAFT') {
+        throw new BadRequestException('only a draft document can be submitted for approval');
+      }
+      const liveVote = await this.prisma.proposal.findFirst({
+        where: { ruleDocumentId: doc.id, internalType: InternalType.RULE_APPROVAL, status: ProposalStatus.ACTIVE },
+        select: { id: true },
+      });
+      if (liveVote) throw new BadRequestException('this document already has a vote in progress');
+      ruleDoc = { id: doc.id, contentMd: doc.contentMd };
+    }
+
     const thresholdPct = await this.thresholdPct(thresholdKind);
     const publicId = await this.nextPublicId();
 
@@ -178,6 +199,10 @@ export class InternalProposalsService {
         spendingAmountAda: internalType === InternalType.SPENDING ? BigInt(Math.round(dto.spendingAmountAda! * 1_000_000)) : undefined,
         spendingSourceBucketId: internalType === InternalType.SPENDING ? dto.spendingSourceBucketId ?? null : undefined,
         spendingDestAddress: internalType === InternalType.SPENDING ? dto.spendingDestAddress!.trim() : undefined,
+        // §27 — associate the rule document + FREEZE its content hash now (vote opens = hash made).
+        ruleDocumentId: internalType === InternalType.RULE_APPROVAL ? ruleDoc!.id : undefined,
+        ruleDeleteRequested: internalType === InternalType.RULE_APPROVAL ? !!dto.ruleDeleteRequested : undefined,
+        ruleDocContentHash: internalType === InternalType.RULE_APPROVAL ? sha256hex(ruleDoc!.contentMd) : undefined,
       },
     });
     // Freeze the eligible-voter set + power now, so voting can start immediately.
@@ -541,6 +566,10 @@ export class InternalProposalsService {
     const voters = await this.voteHistory(proposalId);
     const rationaleMinWords = await this.rationaleMinWords();
     const anchor = await this.prisma.anchor.findFirst({ where: { proposalId, kind: 'internal' }, orderBy: { createdAt: 'desc' } });
+    // §27 — for a rule-approval vote, the targeted document + the content hash frozen when the vote opened.
+    const ruleDoc = p.internalType === 'RULE_APPROVAL' && p.ruleDocumentId
+      ? await this.prisma.ruleDocument.findUnique({ where: { id: p.ruleDocumentId }, select: { id: true, title: true, status: true } })
+      : null;
     const pollCfg = (p.pollOptions ?? null) as { multiple?: boolean; options?: string[] } | null;
 
     // For elections, `actors` is a JSON array of {drepId, drepKeyHash, drepIdOnchain, displayName};
@@ -594,6 +623,14 @@ export class InternalProposalsService {
       tally,
       anchorTxHash: anchor?.txHash ?? null,
       anchorHash: anchor?.hash ?? null,
+      // §27 — rule-approval target: the document, whether this is a delete vote, and the frozen hash.
+      rule: ruleDoc ? {
+        documentId: ruleDoc.id,
+        title: ruleDoc.title,
+        documentStatus: ruleDoc.status,
+        deleteRequested: !!p.ruleDeleteRequested,
+        contentHash: p.ruleDocContentHash ?? null,
+      } : null,
       // §10.5 — spending parameters (ADA) + the board-signing action once approved.
       spending: p.internalType === 'SPENDING' ? {
         amountAda: Number(freshAfterInstall?.spendingAmountAda ?? 0n) / 1e6,
@@ -824,18 +861,90 @@ export class InternalProposalsService {
     const approved = t.kind === 'POLL' ? true : t.approved;
     const status = approved ? ProposalStatus.APPROVED : ProposalStatus.REJECTED;
     await this.prisma.proposal.update({ where: { id: proposalId }, data: { status, resultFinalizedAt: new Date() } });
+    // §27 — a rule-approval vote flips the document's status on the outcome.
+    if (proposal.internalType === InternalType.RULE_APPROVAL && proposal.ruleDocumentId) {
+      await this.applyRuleDecision(proposal.ruleDocumentId, !!proposal.ruleDeleteRequested, approved).catch(() => undefined);
+    }
     // §10.5 — an approved spending proposal queues the multisig action for the board.
     await this.maybePrepareSpending(proposalId).catch(() => undefined);
     await this.anchorResult(proposalId, status, t).catch(() => undefined); // anchoring never blocks the conclusion
     return { id: proposalId, publicId: proposal.publicId, status, tally: t };
   }
 
+  // §27 — compact score of a rule-document's latest approval vote, for the Rule Documents page.
+  // Auto-finalizes a past-due vote first (which flips the document's status via finalize()).
+  async ruleVoteScore(proposalId: string) {
+    const sel = { id: true, type: true, publicId: true, status: true, votingEndAt: true, ruleDeleteRequested: true, ruleDocContentHash: true } as const;
+    let p = await this.prisma.proposal.findUnique({ where: { id: proposalId }, select: sel });
+    if (!p) return null;
+    await this.maybeFinalize({ id: p.id, status: p.status, votingEndAt: p.votingEndAt, type: p.type });
+    p = await this.prisma.proposal.findUnique({ where: { id: proposalId }, select: sel });
+    if (!p) return null;
+    const t = await this.tally(proposalId);
+    const anchor = await this.prisma.anchor.findFirst({
+      where: { proposalId, kind: 'internal' }, orderBy: { createdAt: 'desc' }, select: { txHash: true },
+    });
+    return {
+      proposalId: p.id,
+      publicId: p.publicId,
+      status: p.status,
+      deleteVote: !!p.ruleDeleteRequested,
+      votingEndAt: p.votingEndAt ? p.votingEndAt.toISOString() : null,
+      eligible: t.kind === 'THRESHOLD' ? t.eligible : 0,
+      voted: t.kind === 'THRESHOLD' ? t.cast : 0,
+      ratioPct: t.kind === 'THRESHOLD' ? t.ratioPct : 0,
+      thresholdPct: t.kind === 'THRESHOLD' ? t.thresholdPct : 0,
+      approved: t.kind === 'THRESHOLD' ? t.approved : false,
+      contentHash: p.ruleDocContentHash ?? null,
+      anchorTxHash: anchor?.txHash ?? null,
+    };
+  }
+
+  // Active internal votes for the public landing dashboard (board-only PRIVATE ones excluded).
+  // Each carries the voting-end date + a threshold tally for the mini result chart.
+  async activeVoteSummaries() {
+    const active = await this.prisma.proposal.findMany({
+      where: { type: ProposalType.INTERNAL, status: ProposalStatus.ACTIVE, isPrivate: false },
+      orderBy: { votingEndAt: 'asc' },
+      select: { id: true, publicId: true, title: true, internalType: true, votingEndAt: true },
+    });
+    const out: {
+      id: string; publicId: string | null; title: string; internalType: string | null;
+      votingEndAt: string | null; kind: 'THRESHOLD' | 'POLL';
+      yesPower?: number; noPower?: number; totalPower?: number; thresholdPct?: number;
+      ratioPct?: number; eligible?: number; voted?: number; passing?: boolean;
+    }[] = [];
+    for (const p of active) {
+      const t = await this.tally(p.id);
+      const base = { id: p.id, publicId: p.publicId, title: p.title, internalType: p.internalType, votingEndAt: p.votingEndAt ? p.votingEndAt.toISOString() : null };
+      if (t.kind !== 'THRESHOLD') { out.push({ ...base, kind: 'POLL' }); continue; }
+      out.push({
+        ...base, kind: 'THRESHOLD',
+        yesPower: round2(t.yesPower), noPower: round2(t.totalPower - t.yesPower - t.abstainPower), totalPower: round2(t.totalPower),
+        thresholdPct: t.thresholdPct, ratioPct: t.ratioPct, eligible: t.eligible, voted: t.cast, passing: t.approved,
+      });
+    }
+    return out;
+  }
+
+  // §27 — apply a finalized rule-approval vote to the document. Approval votes act on a DRAFT
+  // (approved → ACTIVE, obligatory; rejected → stays DRAFT); a delete vote removes it when approved
+  // and leaves it untouched when rejected.
+  private async applyRuleDecision(documentId: string, deleteRequested: boolean, approved: boolean) {
+    const status = deleteRequested ? (approved ? 'DELETED' : null) : approved ? 'ACTIVE' : 'DRAFT';
+    if (status) await this.prisma.ruleDocument.update({ where: { id: documentId }, data: { status } });
+  }
+
   private async anchorResult(proposalId: string, status: string, t: Awaited<ReturnType<InternalProposalsService['tally']>>) {
     const p = await this.prisma.proposal.findUnique({ where: { id: proposalId } });
     if (!p) return;
     const voteList = await this.voteList(proposalId);
-    // Date-independent: hash the title + content only (the voting end can move).
-    const docHash = sha256hex(`${p.title}\n${p.contentMd}`);
+    // §27 — for a rule-approval vote, anchor the FROZEN rule-document content hash (what was voted
+    // on). Otherwise hash the proposal's own title + content (date-independent — the end can move).
+    const docHash =
+      p.internalType === InternalType.RULE_APPROVAL && p.ruleDocContentHash
+        ? p.ruleDocContentHash
+        : sha256hex(`${p.title}\n${p.contentMd}`);
     const weighted = p.votingType !== VotingType.ONE_PERSON_ONE_VOTE;
     const style =
       p.votingType === VotingType.BALANCED

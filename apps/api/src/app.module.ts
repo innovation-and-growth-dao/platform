@@ -17,12 +17,14 @@ import { PublicConfigModule } from './config/config.module';
 import { CommentsModule } from './comments/comments.module';
 import { MilestonesModule } from './milestones/milestones.module';
 import { InternalProposalsModule } from './internal-proposals/internal-proposals.module';
+import { RuleDocumentsModule } from './rule-documents/rule-documents.module';
 import { CardanoModule } from './cardano/cardano.module';
 import { RewardsModule } from './rewards/rewards.module';
 import { ProposalMessagesModule } from './messages/proposal-messages.module';
 import { SubmitterModule } from './submitter/submitter.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { JobsModule } from './jobs/jobs.module';
+import { DeployModule } from './deploy/deploy.module';
 
 @Module({
   imports: [
@@ -53,7 +55,9 @@ import { JobsModule } from './jobs/jobs.module';
     NotificationsModule,
     JobsModule,
     InternalProposalsModule,
+    RuleDocumentsModule,
     PreferencesModule,
+    DeployModule,
   ],
 })
 export class AppModule {}

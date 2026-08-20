@@ -9,7 +9,15 @@ import { MeritSystemTable } from './merit-system-table';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { FallbackAvatar } from './fallback-avatar';
 
-
+// Column-sort indicator — a chevron pair, the active direction highlighted (replaces ▲/▼/↕ glyphs).
+function SortIcon({ state }: { state: 'none' | 'asc' | 'desc' }) {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="inline-block shrink-0 align-middle">
+      <path d="M4.5 6.5 8 3l3.5 3.5" opacity={state === 'desc' ? 0.3 : 1} />
+      <path d="M4.5 9.5 8 13l3.5-3.5" opacity={state === 'asc' ? 0.3 : 1} />
+    </svg>
+  );
+}
 
 // Sortable columns of the member table; `num` distinguishes numeric vs text/date sort.
 type SortKey = 'displayName' | 'since' | 'votingPowerAda' | 'delegators' | 'basePower' | 'merit' | 'meritMultiplier' | 'adjustedPower';
@@ -135,8 +143,8 @@ export function DaoOverview() {
                         title={`${t('Sort by')} ${t(c.label)}${active ? (sort.dir === 'asc' ? t(' (ascending)') : t(' (descending)')) : ''}`}
                       >
                         {t(c.label)}
-                        <span className={`text-[10px] ${active ? '' : 'text-neutral-400'}`}>
-                          {active ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}
+                        <span className={active ? '' : 'text-neutral-400'}>
+                          <SortIcon state={active ? sort.dir : 'none'} />
                         </span>
                       </button>
                     </th>

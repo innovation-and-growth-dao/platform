@@ -1908,6 +1908,8 @@ export interface InternalProposalDetail extends InternalProposalSummary {
   rationaleMinWords: { YES: number; NO: number; ABSTAIN: number };
   /** The viewer's current (live) rationale, shown read-only in the locked vote card. */
   myRationale: string | null;
+  /** §27 RULE_APPROVAL: the targeted rule document + the frozen content hash. */
+  rule?: { documentId: string; title: string; documentStatus: string; deleteRequested: boolean; contentHash: string | null } | null;
 }
 export interface CreateInternalInput {
   /** §10.5 SPENDING: amount + destination (+ optional source bucket). */
@@ -1932,6 +1934,9 @@ export interface CreateInternalInput {
   // the server (BOTH / BALANCED / IMPORTANT).
   isBoardElection?: boolean;
   candidates?: string[];
+  /** §27 RULE_APPROVAL: the published rule document to vote on; ruleDeleteRequested → a delete vote. */
+  ruleDocumentId?: string;
+  ruleDeleteRequested?: boolean;
   /** When submitting from a saved draft, the draft to remove once the live proposal is created. */
   draftId?: string;
 }
@@ -2092,4 +2097,67 @@ export const boardDeadlinesApi = {
     request<MilestoneView[]>(`/admin/proposals/${proposalId}/milestones/${milestoneId}/extend`, { method: 'POST', body: JSON.stringify({ days }) }),
   extendPledgeGrace: (proposalId: string, days: number) =>
     request<ProposalDetail>(`/admin/proposals/${proposalId}/extend-pledge-grace`, { method: 'POST', body: JSON.stringify({ days }) }),
+};
+
+// §27 — Rule Documents.
+export interface RuleDocVote {
+  proposalId: string;
+  publicId: string | null;
+  status: string; // ACTIVE (voting) | APPROVED | REJECTED
+  deleteVote: boolean;
+  votingEndAt: string | null;
+  eligible: number;
+  voted: number;
+  ratioPct: number;
+  thresholdPct: number;
+  approved: boolean;
+  contentHash: string | null;
+  anchorTxHash: string | null;
+}
+export interface RuleDocSummary {
+  id: string;
+  title: string;
+  status: string; // PRIVATE | DRAFT | ACTIVE | DELETED
+  ownerName: string;
+  publishedAt: string | null;
+  updatedAt: string;
+  approvedAt: string | null; // when it was approved into effect (ACTIVE docs); null otherwise
+  lastVote: RuleDocVote | null;
+  editable?: boolean; // present in `mine`
+  deletable?: boolean; // present in `mine` — owner may delete before it is put to a vote
+}
+export interface RuleDocComment {
+  id: string;
+  authorName: string;
+  authorRole: string | null;
+  isMine: boolean;
+  contentMd: string | null; // null when the comment is a tombstone (deleted)
+  deleted: boolean;
+  createdAt: string;
+  replies?: RuleDocComment[]; // present on top-level comments (one level of threading)
+}
+export interface RuleDocDetail extends RuleDocSummary {
+  contentMd: string;
+  contentHash: string; // sha256(content), computed live — verify against this
+  isOwner: boolean;
+  editable: boolean;
+  canPropose: boolean;
+  canComment: boolean;
+  canModerate: boolean; // viewer is a board member → may delete any comment
+  comments: RuleDocComment[];
+}
+export const ruleDocumentsApi = {
+  list: (filter?: string) => request<RuleDocSummary[]>(`/rule-documents${filter ? `?filter=${filter}` : ''}`),
+  mine: () => request<RuleDocSummary[]>('/rule-documents/mine'),
+  get: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}`),
+  create: (input: { title: string; contentMd: string }) =>
+    request<RuleDocDetail>('/rule-documents', { method: 'POST', body: JSON.stringify(input) }),
+  update: (id: string, input: { title?: string; contentMd?: string }) =>
+    request<RuleDocDetail>(`/rule-documents/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  publish: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}/publish`, { method: 'POST' }),
+  remove: (id: string) => request<{ ok: boolean }>(`/rule-documents/${id}`, { method: 'DELETE' }),
+  comment: (id: string, contentMd: string, parentId?: string) =>
+    request<RuleDocDetail>(`/rule-documents/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd, ...(parentId ? { parentId } : {}) }) }),
+  deleteComment: (commentId: string) =>
+    request<{ ok: boolean }>(`/rule-documents/comments/${commentId}`, { method: 'DELETE' }),
 };

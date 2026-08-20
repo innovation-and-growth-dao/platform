@@ -16,7 +16,7 @@ import { useExplorer } from '@/lib/explorer';
 import { useUrlNav } from '@/lib/use-url-nav';
 import { useT } from '@/lib/prefs-context';
 import { ProposalDetail } from './proposal-detail';
-import { MarkdownEditor, MarkdownCollapseContext } from './markdown';
+import { MarkdownEditor, MarkdownCollapseContext, ExpandIcon, ShrinkIcon } from './markdown';
 import { CopyButton } from './copy-button';
 
 type Cat = { id: string; name: string; minAda: number | null; maxAda: number | null; conditions: string | null };
@@ -491,7 +491,7 @@ export function ProposalSubmit() {
               className="rounded border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
               title={tr('Expand or collapse all the collapsible text fields below')}
             >
-              {allOpen ? tr('▣ Collapse all fields') : tr('▾ Expand all fields')}
+              {allOpen ? <><ShrinkIcon /> {tr('Collapse all fields')}</> : <><ExpandIcon /> {tr('Expand all fields')}</>}
             </button>
           </div>
           <div className="flex flex-wrap items-end gap-4">

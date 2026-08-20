@@ -15,6 +15,22 @@ export const MarkdownCollapseContext = createContext<{ expandSignal: number; col
 });
 
 /** Render a trusted-after-sanitization markdown string as formatted HTML. */
+// Small inline control icons (replacing emoji glyphs that render as boxed characters in some
+// browsers). Sized to sit next to button text; colour follows the button via currentColor.
+const uiIcon = 'inline-block h-3 w-3 shrink-0 align-[-1px]';
+/** Vertical resize — taller/shorter editing area. */
+export function ResizeVIcon() {
+  return <svg className={uiIcon} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5v11M4.5 6 8 2.5 11.5 6M4.5 10 8 13.5 11.5 10" /></svg>;
+}
+/** Expand / open a collapsed field (chevron down). */
+export function ExpandIcon() {
+  return <svg className={uiIcon} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>;
+}
+/** Shrink / collapse to just the name (chevron up). */
+export function ShrinkIcon() {
+  return <svg className={uiIcon} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 10l4-4 4 4" /></svg>;
+}
+
 export function Markdown({ children, className }: { children: string; className?: string }) {
   return (
     <div
@@ -163,7 +179,7 @@ export function MarkdownEditor({
           {wordBadge}
           <span className="text-xs text-neutral-400">{filled ? `✓ ${tr('filled')}` : tr('empty')}</span>
           <button type="button" onClick={() => setOpen(true)} className="rounded px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700">
-            ⤢ {tr('Expand')}
+            <ExpandIcon /> {tr('Expand')}
           </button>
         </div>
         {subtitle ? <p className="mt-0.5 pl-5 text-[11px] italic text-neutral-500 dark:text-neutral-400">{subtitle}</p> : null}
@@ -208,7 +224,7 @@ export function MarkdownEditor({
             </button>
             {wordBadge}
             <button type="button" onClick={() => setOpen(false)} className={btn} title={tr('Collapse to just the field name')}>
-              ▣ {tr('Shrink')}
+              <ShrinkIcon /> {tr('Shrink')}
             </button>
           </div>
           {subtitle ? <p className="mt-0.5 pl-5 text-[11px] italic text-neutral-500 dark:text-neutral-400">{subtitle}</p> : null}
@@ -233,10 +249,10 @@ export function MarkdownEditor({
           {preview ? tr('Write') : tr('Preview')}
         </button>
         <button type="button" onClick={() => setTall((v) => !v)} className={`${btn} ml-auto`} title={tr('Taller / shorter editing area')}>
-          {tall ? `↕ ${tr('Shorter')}` : `↕ ${tr('Taller')}`}
+          <ResizeVIcon /> {tall ? tr('Shorter') : tr('Taller')}
         </button>
         {!title ? (
-          <button type="button" onClick={() => setOpen(false)} className={btn} title={tr('Collapse')}>▣ {tr('Shrink')}</button>
+          <button type="button" onClick={() => setOpen(false)} className={btn} title={tr('Collapse')}><ShrinkIcon /> {tr('Shrink')}</button>
         ) : null}
       </div>
       {preview ? (

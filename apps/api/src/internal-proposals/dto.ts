@@ -13,7 +13,7 @@ import {
   MinLength,
 } from 'class-validator';
 
-const INTERNAL_TYPES = ['INSTRUCTIVE', 'INFORMATIVE', 'POLL', 'SPENDING'];
+const INTERNAL_TYPES = ['INSTRUCTIVE', 'INFORMATIVE', 'POLL', 'SPENDING', 'RULE_APPROVAL'];
 const SCOPES = ['DREPS_ONLY', 'BOARD_ONLY', 'BOTH'];
 const THRESHOLDS = ['DEFAULT', 'IMPORTANT'];
 const VOTING_TYPES = ['ONE_PERSON_ONE_VOTE', 'BALANCED', 'ONCHAIN'];
@@ -49,6 +49,10 @@ export class CreateInternalProposalDto {
   @IsOptional() @Min(1) spendingAmountAda?: number;
   @IsOptional() @IsString() spendingSourceBucketId?: string;
   @IsOptional() @IsString() @MaxLength(200) spendingDestAddress?: string;
+
+  // §27 — rule-approval vote: the document under vote + whether this is a delete (vs approve) vote.
+  @IsOptional() @IsString() ruleDocumentId?: string;
+  @IsOptional() @IsBoolean() ruleDeleteRequested?: boolean;
 
   // §14 board-member election: when true, the proposal is an INSTRUCTIVE internal proposal
   // whose `candidates` (exactly 5 admitted-DRep UUIDs) become the new board on approval +

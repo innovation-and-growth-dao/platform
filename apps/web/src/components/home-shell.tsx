@@ -18,6 +18,7 @@ import { OnChainProofs } from './on-chain-proofs';
 import { TreasuryOverview } from './treasury-overview';
 import { ActiveProposals } from './active-proposals';
 import { InternalProposals } from './internal-proposals';
+import { RuleDocuments } from './rule-documents';
 import { ProposalDetail } from './proposal-detail';
 import { JoinDaoButton } from './join-dao-button';
 import { NotificationBadge } from './notification-badge';
@@ -28,7 +29,7 @@ import { WalletStatusBanner } from './wallet-status-banner';
 import { useTodoCounts, todoTotal } from '@/lib/use-todo-counts';
 import { HealthBadge } from '@/app/health-badge';
 
-type View = 'overview' | 'members' | 'submitters' | 'experts' | 'me' | 'rounds' | 'proposals' | 'internal' | 'proofs' | 'treasury' | 'setup';
+type View = 'overview' | 'members' | 'submitters' | 'experts' | 'me' | 'rounds' | 'proposals' | 'internal' | 'rules' | 'proofs' | 'treasury' | 'setup';
 const NAV: { key: View; label: string; icon: string; boardOnly?: boolean }[] = [
   // §2 — "My area" first: it is the member's home (to-dos, profile, proposals).
   { key: 'me', label: 'My area', icon: 'user' },
@@ -39,12 +40,13 @@ const NAV: { key: View; label: string; icon: string; boardOnly?: boolean }[] = [
   { key: 'rounds', label: 'Rounds', icon: 'rounds' },
   { key: 'proposals', label: 'Funding proposals', icon: 'file-text' },
   { key: 'internal', label: 'Internal proposals', icon: 'clipboard' },
+  { key: 'rules', label: 'Rule Documents', icon: 'file-text' },
   { key: 'proofs', label: 'On-chain proofs', icon: 'shield' },
   { key: 'treasury', label: 'Treasury', icon: 'landmark' },
   { key: 'setup', label: 'Platform setup', icon: 'settings', boardOnly: true },
 ];
 // Views a logged-out visitor may browse read-only (no My area, no board Setup).
-const PUBLIC_VIEWS: View[] = ['overview', 'members', 'rounds', 'proposals', 'treasury', 'proofs'];
+const PUBLIC_VIEWS: View[] = ['overview', 'members', 'rounds', 'proposals', 'treasury', 'proofs', 'rules'];
 
 export function HomeShell() {
   const { profile, loading } = useAuth();
@@ -59,7 +61,7 @@ export function HomeShell() {
   const [viewNonce, setViewNonce] = useState(0);
   const setView = (v: View) => {
     if (v === view) setViewNonce((n) => n + 1); // same item → reset to its overview
-    setParams({ view: v, tab: null, round: null, proposal: null, ip: null, expert: null });
+    setParams({ view: v, tab: null, round: null, proposal: null, ip: null, expert: null, doc: null });
   };
 
   // Reset sub-navigation whenever the signed-in user changes (login / logout / switch wallet) so
@@ -151,6 +153,8 @@ export function HomeShell() {
             <TreasuryOverview />
           ) : pubView === 'proofs' ? (
             <OnChainProofs />
+          ) : pubView === 'rules' ? (
+            <RuleDocuments />
           ) : (
             <PublicLanding onConnect={() => setWalletOpen(true)} onExplore={() => setView('proposals')} />
           )}
@@ -230,6 +234,8 @@ export function HomeShell() {
           <ActiveProposals />
         ) : view === 'internal' ? (
           <InternalProposals />
+        ) : view === 'rules' ? (
+          <RuleDocuments />
         ) : view === 'proofs' ? (
           <OnChainProofs />
         ) : view === 'treasury' ? (

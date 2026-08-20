@@ -37,7 +37,7 @@ import {
   type FeeVerification,
 } from '@/lib/api';
 import { BackButton, StatusBadge, PROPOSAL_STATUS_CLS, fmtDateTime, RationaleText, PowerBar, useNow, fmtCountdown } from './round-ui';
-import { Markdown, MarkdownEditor, MarkdownCollapseContext } from './markdown';
+import { Markdown, MarkdownEditor, MarkdownCollapseContext, ExpandIcon, ShrinkIcon } from './markdown';
 import { CopyButton } from './copy-button';
 import { ConfirmDialog } from './confirm-dialog';
 import { RevenueSharingBlock } from './proposal-submit';
@@ -200,7 +200,7 @@ export function ProposalDetail({
                 className="rounded border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
                 title={allOpen ? tr('Collapse every section') : tr('Expand every section')}
               >
-                {allOpen ? tr('▣ Shrink all') : tr('▾ Open all')}
+                {allOpen ? <><ShrinkIcon /> {tr('Shrink all')}</> : <><ExpandIcon /> {tr('Open all')}</>}
               </button>
             </div>
             <CollapsibleView label={tr('Pitch / summary')}>
@@ -463,7 +463,7 @@ function CollapsibleView({
         </button>
         {empty ? <span className="text-xs text-neutral-400">{t('empty')}</span> : null}
         <button type="button" onClick={() => setOpen((v) => !v)} className="rounded px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700">
-          {open ? t('▣ Shrink') : t('⤢ Expand')}
+          {open ? <><ShrinkIcon /> {t('Shrink')}</> : <><ExpandIcon /> {t('Expand')}</>}
         </button>
       </div>
       {open ? <div className="border-t border-neutral-200 px-2 py-1.5 dark:border-neutral-700">{children}</div> : null}
