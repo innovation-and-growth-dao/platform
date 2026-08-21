@@ -269,6 +269,9 @@ export function MarkdownEditor({
         </div>
       ) : (
         <>
+          <div className="flex items-center gap-1.5 border-b border-emerald-100 bg-emerald-50/60 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-400">
+            ✎ {tr('You can use Markdown formatting here')}
+          </div>
           <textarea
             ref={ref}
             className="w-full resize-y bg-transparent px-2 py-1.5 text-sm outline-none dark:bg-neutral-900"
