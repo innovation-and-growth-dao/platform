@@ -9,6 +9,7 @@ import { useExplorer } from '@/lib/explorer';
 import { FallbackAvatar } from './fallback-avatar';
 import { ClampedMarkdown } from './clamped-markdown';
 import { Markdown } from './markdown';
+import { SUBCAT_LABEL } from '@/lib/ui';
 
 /**
  * "DAO members" left-nav view: a directory of every current DAO member as a card grid.
@@ -241,6 +242,7 @@ function MemberDetail({ drepId, onBack }: { drepId: string; onBack: () => void }
                   : <span className="font-medium text-red-600">{t('✗ Has NOT pledged to abstain from voting on own proposals')}</span>}
               </div>
             </div>
+            <Expertise ids={d.subcategoryIds} />
             <Links socials={d.socials} contact={d.contact} />
           </div>
         </div>
@@ -325,6 +327,38 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** The member's expertise as labelled chips (same subcategories they pick in their profile form). */
+function Expertise({ ids }: { ids: string[] | null | undefined }) {
+  const t = useT();
+  const list = (ids ?? []).filter(Boolean);
+  if (list.length === 0) return null;
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Expertise')}</div>
+      <div className="mt-1 flex flex-wrap gap-1.5">
+        {list.map((id) => (
+          <span key={id} className="rounded-full border border-emerald-300 px-2 py-0.5 text-xs text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">
+            {SUBCAT_LABEL[id] ?? id}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Turn a stored contact/social value into a real href. Full URLs pass through; emails become
+ *  mailto:, Telegram handles/usernames become t.me links, bare domains get https://. */
+function linkHref(key: string, raw: string): string | null {
+  const v = raw.trim();
+  if (!v) return null;
+  if (/^https?:\/\//i.test(v)) return v;
+  const k = key.toLowerCase();
+  if (k === 'email' || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return `mailto:${v.replace(/^mailto:/i, '')}`;
+  if (k === 'telegram' || v.startsWith('@')) return `https://t.me/${v.replace(/^@/, '')}`;
+  if (/^[\w-]+\.[\w.-]+/.test(v)) return `https://${v}`; // bare domain
+  return null;
+}
+
 function Links({ socials, contact }: { socials: Record<string, string> | null; contact: Record<string, string> | null }) {
   const t = useT();
   const all = [
@@ -336,12 +370,26 @@ function Links({ socials, contact }: { socials: Record<string, string> | null; c
     <div>
       <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('Links')}</div>
       <ul className="mt-1 space-y-0.5 text-xs">
-        {all.map(([k, v]) => (
-          <li key={k}>
-            <span className="mr-1 text-neutral-500">{k}:</span>
-            <span className="font-mono text-neutral-700 dark:text-neutral-300">{v}</span>
-          </li>
-        ))}
+        {all.map(([k, v]) => {
+          const href = linkHref(k, v);
+          return (
+            <li key={k}>
+              <span className="mr-1 text-neutral-500">{k}:</span>
+              {href ? (
+                <a
+                  href={href}
+                  target={href.startsWith('mailto:') ? undefined : '_blank'}
+                  rel="noopener noreferrer"
+                  className="font-mono text-emerald-700 underline decoration-emerald-300 underline-offset-2 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
+                >
+                  {v}
+                </a>
+              ) : (
+                <span className="font-mono text-neutral-700 dark:text-neutral-300">{v}</span>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
