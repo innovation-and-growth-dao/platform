@@ -325,6 +325,8 @@ export const DEFAULT_SUBCATEGORIES: { id: string; label: string }[] = [
   { id: 'ai', label: 'AI' },
   { id: 'programming', label: 'Programming' },
   { id: 'open-source', label: 'Open-source' },
+  { id: 'strategic-planning', label: 'Strategic Planning' },
+  { id: 'business-development', label: 'Business Development' },
 ];
 
 /** §13 merit reason codes (gain/loss). Stored in merit_ledger.reason_code. */

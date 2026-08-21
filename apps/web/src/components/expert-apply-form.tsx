@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { DEFAULT_SUBCATEGORIES } from '@drep-dao/shared';
+import { useSubcategories } from '@/lib/subcategories';
 import { expertApi, type MyExpert } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { MarkdownEditor } from './markdown';
@@ -30,6 +30,7 @@ export function ExpertApplyForm({ onChange }: { onChange?: () => void } = {}) {
   const [photo, setPhoto] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [subs, setSubs] = useState<string[]>([]);
+  const { subs: subcats } = useSubcategories(); // §5.3 board-configurable list
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -179,7 +180,7 @@ export function ExpertApplyForm({ onChange }: { onChange?: () => void } = {}) {
       <div className="space-y-1">
         <span className="text-sm font-medium">{t('Expertise')}</span>
         <div className="flex flex-wrap gap-1.5">
-          {DEFAULT_SUBCATEGORIES.map((sc) => (
+          {subcats.map((sc) => (
             <button
               type="button"
               key={sc.id}

@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { governanceApi, type GovParam } from '@/lib/api';
+import { governanceApi, subcategoriesApi, type GovParam, type Subcategory } from '@/lib/api';
 import { invalidateConfig } from '@/lib/explorer';
+import { invalidateSubcategories } from '@/lib/subcategories';
 import { useT } from '@/lib/prefs-context';
 
 const EXPLORER_OPTIONS = ['cardanoscan', 'cexplorer', 'adastat'];
@@ -201,6 +202,79 @@ export function GovernanceSetup() {
           </table>
         </div>
       )}
+      <SubcategoryManager />
     </div>
   );
 }
+// §5.3 — board-configurable expertise subcategories: the tags DReps/experts pick on their profile.
+// Adding/removing here updates the picker everywhere (via invalidateSubcategories()).
+function SubcategoryManager() {
+  const t = useT();
+  const [subs, setSubs] = useState<Subcategory[] | null>(null);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = () => subcategoriesApi.listAll().then(setSubs).catch((e) => setErr(e instanceof Error ? e.message : 'failed'));
+  useEffect(() => { load(); }, []);
+
+  const run = async (fn: () => Promise<Subcategory[]>) => {
+    setBusy(true); setErr(null);
+    try { setSubs(await fn()); invalidateSubcategories(); }
+    catch (e) { setErr(e instanceof Error ? e.message : t('failed')); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-3 pt-4">
+      <div>
+        <h3 className="font-semibold">{t('Expertise subcategories')}</h3>
+        <p className="text-sm text-neutral-500">
+          {t('The expertise tags DReps and experts choose on their profile. Add ones that fit your community, or remove those you don’t use. Removing a tag hides it from the picker; profiles that already selected it keep it until edited.')}
+        </p>
+      </div>
+      {err ? <div className="text-sm text-red-600">{err}</div> : null}
+      {subs === null ? (
+        <p className="text-sm text-neutral-500">{t('Loading…')}</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {subs.map((s) => (
+            <span key={s.id} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${s.active ? 'border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300' : 'border-neutral-300 text-neutral-400 line-through dark:border-neutral-700'}`}>
+              {s.label}
+              <button
+                type="button"
+                onClick={() => run(() => (s.active ? subcategoriesApi.remove(s.id) : subcategoriesApi.setActive(s.id, true)))}
+                disabled={busy}
+                title={s.active ? t('Remove') : t('Restore')}
+                className="ml-0.5 text-neutral-400 hover:text-rose-600 disabled:opacity-40 dark:hover:text-rose-400"
+              >
+                {s.active ? '×' : '↺'}
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs">
+          <span className="mb-0.5 block text-neutral-500">{t('New subcategory')}</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) run(() => subcategoriesApi.create(name.trim()).then((r) => { setName(''); return r; })); }}
+            placeholder={t('e.g. Strategic Planning')}
+            className="w-56 rounded-md border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => run(() => subcategoriesApi.create(name.trim()).then((r) => { setName(''); return r; }))}
+          disabled={busy || name.trim().length < 2}
+          className="rounded-md border border-emerald-500 px-2.5 py-1 text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-950"
+        >
+          {t('Add subcategory')}
+        </button>
+      </div>
+    </div>
+  );
+}
+

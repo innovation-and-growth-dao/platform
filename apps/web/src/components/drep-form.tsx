@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { DEFAULT_SUBCATEGORIES } from '@drep-dao/shared';
+import { useSubcategories } from '@/lib/subcategories';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { COUNTRIES } from '@/lib/countries';
@@ -31,6 +31,7 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
   const [telegram, setTelegram] = useState('');
   const [email, setEmail] = useState('');
   const [subs, setSubs] = useState<string[]>([]);
+  const { subs: subcats } = useSubcategories(); // §5.3 board-configurable list
   const [kyc, setKyc] = useState(false);
   const [calls, setCalls] = useState(false);
   const [admissionCall, setAdmissionCall] = useState(false);
@@ -223,7 +224,7 @@ export function DrepForm({ mode }: { mode: 'join' | 'profile' }) {
       <div className="space-y-1">
         <span className="text-sm font-medium">{t('Expertise (subcategories)')}</span>
         <div className="flex flex-wrap gap-1.5">
-          {DEFAULT_SUBCATEGORIES.map((sc) => (
+          {subcats.map((sc) => (
             <button
               type="button"
               key={sc.id}

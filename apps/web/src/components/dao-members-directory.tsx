@@ -9,7 +9,7 @@ import { useExplorer } from '@/lib/explorer';
 import { FallbackAvatar } from './fallback-avatar';
 import { ClampedMarkdown } from './clamped-markdown';
 import { Markdown } from './markdown';
-import { SUBCAT_LABEL } from '@/lib/ui';
+import { useSubcategories } from '@/lib/subcategories';
 
 /**
  * "DAO members" left-nav view: a directory of every current DAO member as a card grid.
@@ -330,6 +330,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 /** The member's expertise as labelled chips (same subcategories they pick in their profile form). */
 function Expertise({ ids }: { ids: string[] | null | undefined }) {
   const t = useT();
+  const { labelOf } = useSubcategories();
   const list = (ids ?? []).filter(Boolean);
   if (list.length === 0) return null;
   return (
@@ -338,7 +339,7 @@ function Expertise({ ids }: { ids: string[] | null | undefined }) {
       <div className="mt-1 flex flex-wrap gap-1.5">
         {list.map((id) => (
           <span key={id} className="rounded-full border border-emerald-300 px-2 py-0.5 text-xs text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">
-            {SUBCAT_LABEL[id] ?? id}
+            {labelOf(id)}
           </span>
         ))}
       </div>

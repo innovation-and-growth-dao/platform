@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { daoApi, type DaoExpert } from '@/lib/api';
 import { useT } from '@/lib/prefs-context';
-import { SUBCAT_LABEL } from '@/lib/ui';
+import { useSubcategories } from '@/lib/subcategories';
 import { card } from '@/lib/ui';
 import { FallbackAvatar } from './fallback-avatar';
 import { CopyButton } from './copy-button';
@@ -19,6 +19,7 @@ import { ClampedMarkdown } from './clamped-markdown';
  */
 export function ExpertsDirectory() {
   const t = useT();
+  const { labelOf } = useSubcategories();
   const { drepUrl } = useExplorer();
   const { get, setParams } = useUrlNav();
   const [rows, setRows] = useState<DaoExpert[] | null>(null);
@@ -90,7 +91,7 @@ export function ExpertsDirectory() {
                         <div className="mt-1 flex flex-wrap gap-1">
                           {x.subcategoryIds.map((id) => (
                             <span key={id} className="rounded-full border border-neutral-300 px-2 py-0.5 text-[11px] text-neutral-600 dark:border-neutral-700 dark:text-neutral-400">
-                              {SUBCAT_LABEL[id] ?? id}
+                              {labelOf(id)}
                             </span>
                           ))}
                         </div>
