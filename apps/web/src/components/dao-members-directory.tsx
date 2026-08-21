@@ -8,6 +8,7 @@ import { CopyButton } from './copy-button';
 import { useExplorer } from '@/lib/explorer';
 import { FallbackAvatar } from './fallback-avatar';
 import { ClampedMarkdown } from './clamped-markdown';
+import { Markdown } from './markdown';
 
 /**
  * "DAO members" left-nav view: a directory of every current DAO member as a card grid.
@@ -149,7 +150,15 @@ function BioPreview({ drepId }: { drepId: string }) {
   }, [drepId]);
   if (bio === undefined) return <p className="line-clamp-4 text-xs text-neutral-400">{t('Loading bio…')}</p>;
   if (!bio) return <p className="line-clamp-4 text-xs italic text-neutral-400">{t('No bio provided.')}</p>;
-  return <p className="line-clamp-4 whitespace-pre-wrap text-xs text-neutral-600 dark:text-neutral-300">{bio}</p>;
+  // Render the bio as markdown (bold/italic/headings/links) — the same way the full profile shows
+  // it — instead of the raw source, so "**Objectives**" reads as bold, not literal asterisks.
+  // Headings are flattened to the card's text size so a heading-first bio stays compact, and the
+  // whole preview is height-clamped to ~4 lines.
+  return (
+    <div className="max-h-[4.75rem] overflow-hidden text-xs leading-relaxed text-neutral-600 dark:text-neutral-300 [&_h2]:mt-0 [&_h2]:text-xs [&_h3]:mt-0 [&_h3]:text-xs [&_h4]:mt-0 [&_h4]:text-xs [&_p]:my-0 [&_ul]:my-0 [&_ol]:my-0">
+      <Markdown>{bio}</Markdown>
+    </div>
+  );
 }
 
 function MemberDetail({ drepId, onBack }: { drepId: string; onBack: () => void }) {

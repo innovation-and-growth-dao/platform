@@ -245,8 +245,13 @@ export function MarkdownEditor({
           </button>
         ))}
         <span className="mx-1 h-4 w-px bg-neutral-300 dark:bg-neutral-600" />
-        <button type="button" onClick={() => setPreview((v) => !v)} className={btn}>
-          {preview ? tr('Write') : tr('Preview')}
+        <button
+          type="button"
+          onClick={() => setPreview((v) => !v)}
+          title={tr('See exactly how your text will look once saved')}
+          className={`${btn} ${preview ? 'bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600' : ''}`}
+        >
+          {preview ? `← ${tr('Back to editing')}` : `👁 ${tr('Preview')}`}
         </button>
         <button type="button" onClick={() => setTall((v) => !v)} className={`${btn} ml-auto`} title={tr('Taller / shorter editing area')}>
           <ResizeVIcon /> {tall ? tr('Shorter') : tr('Taller')}
@@ -257,18 +262,28 @@ export function MarkdownEditor({
       </div>
       {preview ? (
         <div className="min-h-[5rem] px-2 py-1.5 text-sm text-neutral-700 dark:text-neutral-300">
-          {value.trim() ? <Markdown>{value}</Markdown> : <span className="text-neutral-400">{tr('Nothing to preview.')}</span>}
+          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+            👁 {tr('Preview — this is how it will appear once saved')}
+          </div>
+          {value.trim() ? <Markdown>{value}</Markdown> : <span className="text-neutral-400">{tr('Nothing to preview yet — switch back and write something.')}</span>}
         </div>
       ) : (
-        <textarea
-          ref={ref}
-          className="w-full resize-y rounded-b-md bg-transparent px-2 py-1.5 text-sm outline-none dark:bg-neutral-900"
-          style={{ height: tall ? '22rem' : `${Math.max(minRows, 3) * 1.6 + 0.75}rem` }}
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          required={required}
-        />
+        <>
+          <textarea
+            ref={ref}
+            className="w-full resize-y bg-transparent px-2 py-1.5 text-sm outline-none dark:bg-neutral-900"
+            style={{ height: tall ? '22rem' : `${Math.max(minRows, 3) * 1.6 + 0.75}rem` }}
+            placeholder={placeholder}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            required={required}
+          />
+          {/* §UX — make the markup explicit: many users type e.g. "##Heading##" (wrapping, like
+              **bold**) and are surprised it doesn't render. Show the real syntax + point at Preview. */}
+          <div className="rounded-b-md border-t border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] leading-relaxed text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-400">
+            {tr('Markdown formatting')}: <code className="text-neutral-700 dark:text-neutral-300">**bold**</code> · <code className="text-neutral-700 dark:text-neutral-300">*italic*</code> · <code className="text-neutral-700 dark:text-neutral-300">## Heading</code> <span className="text-neutral-400">({tr('note the space, no closing #')})</span> · <code className="text-neutral-700 dark:text-neutral-300">- list</code> · <code className="text-neutral-700 dark:text-neutral-300">[text](https://…)</code> — {tr('hit')} <span className="font-medium">👁 {tr('Preview')}</span> {tr('to check it')}.
+          </div>
+        </>
       )}
     </div>
   );
