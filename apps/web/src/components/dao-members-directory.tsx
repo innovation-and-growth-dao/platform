@@ -381,7 +381,7 @@ function Links({ socials, contact }: { socials: Record<string, string> | null; c
                   href={href}
                   target={href.startsWith('mailto:') ? undefined : '_blank'}
                   rel="noopener noreferrer"
-                  className="font-mono text-emerald-700 underline decoration-emerald-300 underline-offset-2 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
+                  className="font-mono text-blue-600 underline decoration-blue-300 underline-offset-2 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                 >
                   {v}
                 </a>
