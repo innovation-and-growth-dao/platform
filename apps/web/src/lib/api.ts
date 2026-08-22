@@ -2171,3 +2171,8 @@ export const subcategoriesApi = {
   setActive: (id: string, active: boolean) => request<Subcategory[]>(`/subcategories/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) }),
   remove: (id: string) => request<Subcategory[]>(`/subcategories/${id}`, { method: 'DELETE' }),
 };
+
+// §26 — pre-maintenance warning: is an update about to start (set ~60s ahead by the deploy-guard)?
+export const maintenanceApi = {
+  status: () => request<{ pending: boolean; secondsLeft: number }>('/maintenance/status'),
+};

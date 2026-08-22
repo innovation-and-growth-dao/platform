@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/lib/auth-context';
+import { MaintenanceNotice } from '@/components/maintenance-notice';
 import { PrefsProvider } from '@/lib/prefs-context';
 import { LanguageThemeSwitcher } from '@/components/language-theme-switcher';
 import { brand } from '@/lib/brand';
@@ -49,6 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* eslint-disable-next-line @next/next/no-before-interactive-script-outside-document */}
         <script dangerouslySetInnerHTML={{ __html: PREFS_BOOTSTRAP }} />
         <PrefsProvider>
+          <MaintenanceNotice />
           <LanguageThemeSwitcher />
           <AuthProvider>{children}</AuthProvider>
         </PrefsProvider>
