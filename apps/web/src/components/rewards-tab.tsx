@@ -206,7 +206,7 @@ function CalcCard({ calc, buckets, onChange, seq }: { calc: RewardCalcView; buck
         </div>
       </div>
       {msg ? <div className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{msg}</div> : null}
-      <table className="mt-2 w-full text-xs">
+      <div className="overflow-x-auto"><table className="mt-2 w-full text-xs">
         <thead><tr className="text-left text-neutral-400"><th className="font-normal">{t('Recipient')}</th>{calc.kind !== 'BOARD_MONTHLY' ? <th className="font-normal">{calc.kind === 'MILESTONE' ? t('Checks') : t('Votes')}</th> : null}{calc.kind === 'DV_BONUS' ? <th className="font-normal" title={t('Final voting power used to weight the bonus')}>{t('Power')}</th> : null}<th className="font-normal">{t('Computed')}</th><th className="font-normal">{t('Pay')}</th><th></th></tr></thead>
         <tbody>
           {calc.entries.map((e) => <EntryRow key={e.id} e={e} showUnits={calc.kind !== 'BOARD_MONTHLY'} showPower={calc.kind === 'DV_BONUS'} locked={anyPaid} onChange={onChange} />)}
@@ -222,7 +222,7 @@ function CalcCard({ calc, buckets, onChange, seq }: { calc: RewardCalcView; buck
             <tr className="border-t border-neutral-200 font-medium dark:border-neutral-800"><td className="pt-1">{t('Total')}</td>{calc.kind !== 'BOARD_MONTHLY' ? <td className="pt-1 tabular-nums">{calc.entries.reduce((s, e) => s + (e.units ?? 0), 0)}</td> : null}<td></td><td className="pt-1 tabular-nums">{total.toLocaleString()} ₳</td><td></td></tr>
           )}
         </tfoot>
-      </table>
+      </table></div>
       {!anyPaid && heldBack > 0 ? (
         <p className="mt-1 text-xs text-amber-600">
           ⚠ {heldBack.toLocaleString()} ₳ {t('will not be sent —')} {heldEntries.length} {heldEntries.length === 1 ? t('member') : t('members')} {t('without a payment address. It stays in the treasury until they set one.')}
@@ -294,10 +294,10 @@ function Experts({ roundId }: { roundId: string }) {
   return (
     <div className="space-y-2">
       <p className="text-xs text-neutral-500">{t('Set each expert’s ADA reward for this round per stage. The milestone switch: ON = the expert also earns the per-check DRep reward (extra) on top; OFF = they get only the milestone amount.')}</p>
-      <table className="w-full text-xs">
+      <div className="overflow-x-auto"><table className="w-full text-xs">
         <thead><tr className="text-left text-neutral-400"><th className="font-normal">{t('Expert')}</th><th className="font-normal">{t('Filtering ₳')}</th><th className="font-normal">{t('D&V ₳')}</th><th className="font-normal">{t('Milestone ₳')}</th><th className="font-normal">{t('Like DRep')}</th></tr></thead>
         <tbody>{rows.map((r) => <ExpertRow key={r.expertId} roundId={roundId} row={r} onChange={load} />)}</tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

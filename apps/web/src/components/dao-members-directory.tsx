@@ -63,7 +63,7 @@ export function DaoMembersDirectory() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('Search by name or DRep ID…')}
-              className="w-72 rounded-md border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className="w-full sm:w-72 rounded-md border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-950"
             />
           </header>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
