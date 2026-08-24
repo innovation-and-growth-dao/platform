@@ -39,6 +39,7 @@ async function bootstrap() {
       { path: 'healthz', method: RequestMethod.GET },
       { path: 'internal/healthz', method: RequestMethod.GET },
       { path: 'internal/metrics', method: RequestMethod.GET },
+      { path: 'internal/deploy/readiness', method: RequestMethod.GET },
     ],
   });
 

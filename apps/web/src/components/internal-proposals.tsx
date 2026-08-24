@@ -5,11 +5,13 @@ import { card } from '@/lib/ui';
 import {
   internalProposalsApi,
   ruleDocumentsApi,
+  decisionsApi,
   daoApi,
   configApi,
   treasuryBucketsApi,
   matchesProposalSearch,
   type RuleDocSummary,
+  type DecisionSummary,
   type TreasuryBucket,
   type InternalProposalSummary,
   type InternalProposalDetail,
@@ -33,6 +35,7 @@ const TYPE_LABEL: Record<string, string> = {
   POLL: 'Poll (choose option(s))',
   SPENDING: 'Spending (treasury payment on approval)',
   RULE_APPROVAL: 'Approval of a rule document',
+  DECISION_APPROVAL: 'Approval of a decision',
 };
 const SCOPE_LABEL: Record<string, string> = {
   DREPS_ONLY: 'Non-board DReps only',
@@ -88,6 +91,8 @@ export function InternalProposals() {
   // pre-set to a rule-approval vote on that document.
   const newRule = get('newRule');
   useEffect(() => { if (newRule) setCreating(true); }, [newRule]);
+  const newDecision = get('newDecision');
+  useEffect(() => { if (newDecision) setCreating(true); }, [newDecision]);
 
   const load = useCallback(() => {
     internalProposalsApi.list().then(setItems).catch((e) => setError(e instanceof Error ? e.message : 'failed'));
@@ -107,7 +112,7 @@ export function InternalProposals() {
   }
 
   const isElection = subTab === 'election';
-  const closeEditor = () => { setCreating(false); setEditingDraftId(null); if (newRule) setParams({ newRule: null }); };
+  const closeEditor = () => { setCreating(false); setEditingDraftId(null); if (newRule) setParams({ newRule: null }); if (newDecision) setParams({ newDecision: null }); };
   // Dedicated full-page editor: clicking "New …" or a draft row shows only the form. Submitting
   // or cancelling returns to the default list + filter view.
   if (creating) {
@@ -119,6 +124,7 @@ export function InternalProposals() {
             election={isElection}
             draftId={editingDraftId}
             preselectRuleDoc={newRule}
+            preselectDecision={newDecision}
             onCancel={closeEditor}
             onDone={() => { closeEditor(); load(); }}
           />
@@ -290,16 +296,19 @@ function formatMyVote(p: { internalType: string; myVotes: string[] }, tr: (k: st
   return `${tr('you voted')} ${v[0] === 'ABSTAIN' ? tr('Abstain') : tr(v[0])}`;
 }
 
-function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false, preselectRuleDoc = null }: { onDone: () => void; onCancel: () => void; draftId?: string | null; election?: boolean; preselectRuleDoc?: string | null }) {
+function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false, preselectRuleDoc = null, preselectDecision = null }: { onDone: () => void; onCancel: () => void; draftId?: string | null; election?: boolean; preselectRuleDoc?: string | null; preselectDecision?: string | null }) {
   const t = useT();
   const editingDraft = !!draftId;
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [internalType, setInternalType] = useState(preselectRuleDoc ? 'RULE_APPROVAL' : 'INFORMATIVE');
+  const [internalType, setInternalType] = useState(preselectRuleDoc ? 'RULE_APPROVAL' : preselectDecision ? 'DECISION_APPROVAL' : 'INFORMATIVE');
   // §27 — rule-document approval: the votable documents + the selection + delete-vote flag.
   const [ruleDocs, setRuleDocs] = useState<RuleDocSummary[]>([]);
   const [ruleDocumentId, setRuleDocumentId] = useState(preselectRuleDoc ?? '');
   const [ruleDeleteRequested, setRuleDeleteRequested] = useState(false);
+  const [decisions, setDecisions] = useState<DecisionSummary[]>([]);
+  const [decisionId, setDecisionId] = useState(preselectDecision ?? '');
+  const [decisionDeleteRequested, setDecisionDeleteRequested] = useState(false);
   const [votersScope, setVotersScope] = useState('BOTH');
   const [thresholdKind, setThresholdKind] = useState('DEFAULT');
   const [votingType, setVotingType] = useState('BALANCED');
@@ -366,6 +375,13 @@ function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false
       .then(([a, b]) => setRuleDocs([...a, ...b]))
       .catch(() => undefined);
   }, [isRule, ruleDocs.length]);
+  const isDecision = internalType === 'DECISION_APPROVAL';
+  useEffect(() => {
+    if (!isDecision || decisions.length) return;
+    Promise.all([decisionsApi.list('draft'), decisionsApi.list('active')])
+      .then(([a, b]) => setDecisions([...a, ...b]))
+      .catch(() => undefined);
+  }, [isDecision, decisions.length]);
   // Precise remaining duration from now to the chosen end (down to the minute), so a few-minute
   // window doesn't round up to "1 day".
   const msLeft = new Date(votingEnd).getTime() - Date.now();
@@ -401,6 +417,7 @@ function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false
       ...(isInstructive && deliveryDate ? { deliveryDate: new Date(deliveryDate).toISOString() } : {}),
       ...(isSpending ? { spendingAmountAda: Number(spendAmount) || 0, spendingDestAddress: spendDest.trim(), ...(spendBucket ? { spendingSourceBucketId: spendBucket } : {}) } : {}),
       ...(isRule ? { ruleDocumentId, ruleDeleteRequested } : {}),
+      ...(isDecision ? { decisionId, decisionDeleteRequested } : {}),
     };
   };
 
@@ -551,6 +568,27 @@ function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={ruleDeleteRequested} onChange={(e) => setRuleDeleteRequested(e.target.checked)} />
                 {t('Delete the document (vote to remove it instead of approving)')}
+              </label>
+            </div>
+          ) : null}
+          {!election && isDecision ? (
+            <div className="space-y-2 rounded border border-emerald-200 p-2 dark:border-emerald-900">
+              <div className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{t('§28 — vote to approve (or delete) a decision. Submitting freezes its content and anchors the hash on-chain.')}</div>
+              <label className="block text-sm">
+                {t('Decision')} <span className="text-red-500">*</span>
+                <select className={field} value={decisionId} onChange={(e) => setDecisionId(e.target.value)}>
+                  <option value="">{t('— select a decision —')}</option>
+                  {decisions.map((d) => (
+                    <option key={d.id} value={d.id}>{d.title} · {d.status}</option>
+                  ))}
+                </select>
+              </label>
+              {decisions.length === 0 ? (
+                <div className="text-xs text-amber-600">{t('No published decisions yet. Create one under “My Decisions”, publish it (→ draft), then start the vote here.')}</div>
+              ) : null}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={decisionDeleteRequested} onChange={(e) => setDecisionDeleteRequested(e.target.checked)} />
+                {t('Delete the decision (vote to remove it instead of approving)')}
               </label>
             </div>
           ) : null}
@@ -705,6 +743,8 @@ function SubmitInternalForm({ onDone, onCancel, draftId = null, election = false
           if (opts.length < 2) missing.push(t('at least two poll options'));
         } else if (isRule && !ruleDocumentId) {
           missing.push(t('rule document'));
+        } else if (isDecision && !decisionId) {
+          missing.push(t('decision'));
         }
         const ready = missing.length === 0;
         return (
@@ -897,6 +937,19 @@ function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
             </div>
             {p.rule.contentHash ? (
               <div className="mt-1 break-all font-mono text-[11px]"><span className="text-neutral-500">{t('Frozen content hash (SHA-256):')}</span> {p.rule.contentHash}</div>
+            ) : null}
+          </div>
+        ) : null}
+        {p.decision ? (
+          <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50/40 px-3 py-2 text-xs dark:border-emerald-900 dark:bg-emerald-950/20">
+            <div className="font-medium text-emerald-800 dark:text-emerald-200">{p.decision.deleteRequested ? t('Vote to DELETE a decision') : t('Vote to APPROVE a decision')}</div>
+            <div className="mt-1">
+              <span className="font-medium">{t('Decision:')}</span>{' '}
+              <button onClick={() => setParams({ view: 'decisions', doc: p.decision!.decisionId, ip: null })} className="text-emerald-700 underline dark:text-emerald-400">{p.decision.title}</button>
+              {` · ${p.decision.decisionStatus}`}
+            </div>
+            {p.decision.contentHash ? (
+              <div className="mt-1 break-all font-mono text-[11px]"><span className="text-neutral-500">{t('Frozen content hash (SHA-256):')}</span> {p.decision.contentHash}</div>
             ) : null}
           </div>
         ) : null}

@@ -26,6 +26,7 @@ import { StopFundingBoardPanel } from './stop-funding-board-panel';
 import { RoundStageControls } from './round-stage-controls';
 import { InternalProposals } from './internal-proposals';
 import { MyRuleDocuments } from './rule-documents';
+import { MyDecisions } from './decisions';
 import { FeeConfirmations } from './fee-confirmations';
 import { RevenueSharingConfirmations } from './revenue-sharing-confirmations';
 import { ReviewerAssignments } from './reviewer-assignments';
@@ -80,6 +81,9 @@ export function MemberArea() {
   }, []);
   useEffect(loadSubmitter, [loadSubmitter]);
   const onSubmitterChange = useCallback(() => { loadSubmitter(); void refresh(); }, [loadSubmitter, refresh]);
+
+  const [boardSeated, setBoardSeated] = useState<boolean | null>(null);
+  useEffect(() => { submitterApi.pendingCount().then((r) => setBoardSeated(r.boardElected)).catch(() => setBoardSeated(null)); }, []);
 
   const isBoard = !!profile?.roles.includes('BOARD');
   const canVote = !!profile && (profile.roles.includes('DREP') || profile.roles.includes('DAO_MEMBER') || profile.roles.includes('BOARD'));
@@ -141,6 +145,7 @@ export function MemberArea() {
     });
     // §27 — the member's own rule documents (draft, propose for approval, track the vote).
     tabs.push({ key: 'rules', label: 'My Rule documents', node: <MyRuleDocuments /> });
+    tabs.push({ key: 'decisions', label: 'My Decisions', node: <MyDecisions /> });
   }
 
   tabs.push({
@@ -180,6 +185,10 @@ export function MemberArea() {
     tabs.push({ key: 'rounds', label: 'Round control', badge: todo.rounds, node: <RoundStageControls /> });
     tabs.push({ key: 'rewards', label: 'Rewards', node: <RewardsTab /> });
     tabs.push({ key: 'apps', label: 'Applications', badge: todo.applications, node: <ApplicationsTab /> });
+  } else if ((isMember || isDrep) && boardSeated === false) {
+    // Bootstrap: no board seated yet → an admitted DRep reviews the applications that always need a
+    // human approval (Experts + Submitters); open admission auto-admits DReps only.
+    tabs.push({ key: 'apps', label: 'Applications', node: <CouncilApplicationsTab /> });
   }
 
   return <MemberTabs tabs={tabs} />;
@@ -533,6 +542,26 @@ function ApplicationsTab() {
       <section className={card}><ExpertReviewPanel history={showHistory} /></section>
       <SubmitterReviewPanel history={showHistory} />
       <section className={card}><RemovalPanel history={showHistory} /></section>
+    </div>
+  );
+}
+
+/** Bootstrap: while no board is seated, an admitted DRep reviews the applications that still need a
+ *  human approval — Experts and Submitters (DRep admission is automatic under open admission). */
+function CouncilApplicationsTab() {
+  const t = useT();
+  const [showHistory, setShowHistory] = useState(false);
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-neutral-500">{t('No board is seated yet — as an admitted DRep you can review Expert & Submitter applications.')}</p>
+        <label className="flex items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400">
+          <input type="checkbox" checked={showHistory} onChange={(e) => setShowHistory(e.target.checked)} />
+          {t('Show history')}
+        </label>
+      </div>
+      <section className={card}><ExpertReviewPanel history={showHistory} /></section>
+      <SubmitterReviewPanel history={showHistory} />
     </div>
   );
 }

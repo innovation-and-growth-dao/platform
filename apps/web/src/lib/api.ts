@@ -1910,6 +1910,7 @@ export interface InternalProposalDetail extends InternalProposalSummary {
   myRationale: string | null;
   /** §27 RULE_APPROVAL: the targeted rule document + the frozen content hash. */
   rule?: { documentId: string; title: string; documentStatus: string; deleteRequested: boolean; contentHash: string | null } | null;
+  decision?: { decisionId: string; title: string; decisionStatus: string; deleteRequested: boolean; contentHash: string | null } | null;
 }
 export interface CreateInternalInput {
   /** §10.5 SPENDING: amount + destination (+ optional source bucket). */
@@ -1937,6 +1938,8 @@ export interface CreateInternalInput {
   /** §27 RULE_APPROVAL: the published rule document to vote on; ruleDeleteRequested → a delete vote. */
   ruleDocumentId?: string;
   ruleDeleteRequested?: boolean;
+  decisionId?: string;
+  decisionDeleteRequested?: boolean;
   /** When submitting from a saved draft, the draft to remove once the live proposal is created. */
   draftId?: string;
 }
@@ -2120,6 +2123,7 @@ export interface RuleDocSummary {
   status: string; // PRIVATE | DRAFT | ACTIVE | DELETED
   ownerName: string;
   publishedAt: string | null;
+  expiresAt: string | null; // §27 — expiry date, or null = never
   updatedAt: string;
   approvedAt: string | null; // when it was approved into effect (ACTIVE docs); null otherwise
   lastVote: RuleDocVote | null;
@@ -2150,9 +2154,9 @@ export const ruleDocumentsApi = {
   list: (filter?: string) => request<RuleDocSummary[]>(`/rule-documents${filter ? `?filter=${filter}` : ''}`),
   mine: () => request<RuleDocSummary[]>('/rule-documents/mine'),
   get: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}`),
-  create: (input: { title: string; contentMd: string }) =>
+  create: (input: { title: string; contentMd: string; expiresAt?: string | null }) =>
     request<RuleDocDetail>('/rule-documents', { method: 'POST', body: JSON.stringify(input) }),
-  update: (id: string, input: { title?: string; contentMd?: string }) =>
+  update: (id: string, input: { title?: string; contentMd?: string; expiresAt?: string | null }) =>
     request<RuleDocDetail>(`/rule-documents/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   publish: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}/publish`, { method: 'POST' }),
   remove: (id: string) => request<{ ok: boolean }>(`/rule-documents/${id}`, { method: 'DELETE' }),
@@ -2160,6 +2164,70 @@ export const ruleDocumentsApi = {
     request<RuleDocDetail>(`/rule-documents/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd, ...(parentId ? { parentId } : {}) }) }),
   deleteComment: (commentId: string) =>
     request<{ ok: boolean }>(`/rule-documents/comments/${commentId}`, { method: 'DELETE' }),
+};
+
+// §28 — Decisions.
+export interface DecisionVote {
+  proposalId: string;
+  publicId: string | null;
+  status: string; // ACTIVE (voting) | APPROVED | REJECTED
+  deleteVote: boolean;
+  votingEndAt: string | null;
+  eligible: number;
+  voted: number;
+  ratioPct: number;
+  thresholdPct: number;
+  approved: boolean;
+  contentHash: string | null;
+  anchorTxHash: string | null;
+}
+export interface DecisionSummary {
+  id: string;
+  title: string;
+  status: string; // PRIVATE | DRAFT | ACTIVE | DELETED
+  ownerName: string;
+  publishedAt: string | null;
+  expiresAt: string | null; // §28 — expiry date, or null = never
+  updatedAt: string;
+  approvedAt: string | null; // when it was approved into effect (ACTIVE docs); null otherwise
+  lastVote: DecisionVote | null;
+  editable?: boolean; // present in `mine`
+  deletable?: boolean; // present in `mine` — owner may delete before it is put to a vote
+}
+export interface DecisionComment {
+  id: string;
+  authorName: string;
+  authorRole: string | null;
+  isMine: boolean;
+  contentMd: string | null; // null when the comment is a tombstone (deleted)
+  deleted: boolean;
+  createdAt: string;
+  replies?: DecisionComment[]; // present on top-level comments (one level of threading)
+}
+export interface DecisionDetail extends DecisionSummary {
+  contentMd: string;
+  contentHash: string; // sha256(content), computed live — verify against this
+  isOwner: boolean;
+  editable: boolean;
+  canPropose: boolean;
+  canComment: boolean;
+  canModerate: boolean; // viewer is a board member → may delete any comment
+  comments: DecisionComment[];
+}
+export const decisionsApi = {
+  list: (filter?: string) => request<DecisionSummary[]>(`/decisions${filter ? `?filter=${filter}` : ''}`),
+  mine: () => request<DecisionSummary[]>('/decisions/mine'),
+  get: (id: string) => request<DecisionDetail>(`/decisions/${id}`),
+  create: (input: { title: string; contentMd: string; expiresAt?: string | null }) =>
+    request<DecisionDetail>('/decisions', { method: 'POST', body: JSON.stringify(input) }),
+  update: (id: string, input: { title?: string; contentMd?: string; expiresAt?: string | null }) =>
+    request<DecisionDetail>(`/decisions/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  publish: (id: string) => request<DecisionDetail>(`/decisions/${id}/publish`, { method: 'POST' }),
+  remove: (id: string) => request<{ ok: boolean }>(`/decisions/${id}`, { method: 'DELETE' }),
+  comment: (id: string, contentMd: string, parentId?: string) =>
+    request<DecisionDetail>(`/decisions/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd, ...(parentId ? { parentId } : {}) }) }),
+  deleteComment: (commentId: string) =>
+    request<{ ok: boolean }>(`/decisions/comments/${commentId}`, { method: 'DELETE' }),
 };
 
 // §5.3 — board-configurable expertise subcategories.

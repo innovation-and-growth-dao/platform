@@ -68,13 +68,27 @@ export class RuleDocumentsService {
     return d ? d.toISOString() : null;
   }
 
-  private summary(doc: { id: string; title: string; status: string; publishedAt: Date | null; updatedAt: Date; owner: { displayName: string | null } }) {
+  private nextExpiry(current: Date | null, input: string | null | undefined): Date | null | undefined {
+    if (input === undefined) return undefined;
+    if (input === null || input === '') {
+      if (current) throw new BadRequestException('the expiry can only be shortened, not removed once set');
+      return null;
+    }
+    const d = new Date(input);
+    if (Number.isNaN(d.getTime())) throw new BadRequestException('invalid expiry date');
+    if (d.getTime() <= Date.now()) throw new BadRequestException('the expiry must be a date in the future');
+    if (current && d.getTime() > current.getTime()) throw new BadRequestException('the expiry can only be shortened, not extended');
+    return d;
+  }
+
+  private summary(doc: { id: string; title: string; status: string; publishedAt: Date | null; expiresAt: Date | null; updatedAt: Date; owner: { displayName: string | null } }) {
     return {
       id: doc.id,
       title: doc.title,
       status: doc.status,
       ownerName: doc.owner.displayName ?? 'DRep',
       publishedAt: doc.publishedAt ? doc.publishedAt.toISOString() : null,
+      expiresAt: doc.expiresAt ? doc.expiresAt.toISOString() : null,
       updatedAt: doc.updatedAt.toISOString(),
     };
   }
@@ -151,11 +165,12 @@ export class RuleDocumentsService {
     };
   }
 
-  async create(userId: string, dto: { title: string; contentMd: string }) {
+  async create(userId: string, dto: { title: string; contentMd: string; expiresAt?: string | null }) {
     const drep = await this.prisma.drep.findUnique({ where: { userId }, select: { id: true, status: true } });
     if (drep?.status !== 'ADMITTED') throw new ForbiddenException('you must be a Council member to author rule documents — join the Council first (it is free)');
+    const expiresAt = this.nextExpiry(null, dto.expiresAt) ?? null;
     const doc = await this.prisma.ruleDocument.create({
-      data: { title: dto.title.trim(), contentMd: dto.contentMd, ownerUserId: userId, status: 'PRIVATE' },
+      data: { title: dto.title.trim(), contentMd: dto.contentMd, ownerUserId: userId, status: 'PRIVATE', expiresAt },
     });
     // §13 — +1 merit for authoring a new rule document (no-op while the merit system is disabled).
     await this.merit.tryAward(drep.id, 'RULE_DOC_SUBMIT', doc.id);
@@ -169,13 +184,14 @@ export class RuleDocumentsService {
     return doc;
   }
 
-  async update(userId: string, id: string, dto: { title?: string; contentMd?: string }) {
+  async update(userId: string, id: string, dto: { title?: string; contentMd?: string; expiresAt?: string | null }) {
     const doc = await this.ownEditable(id, userId);
     if (doc.status !== 'PRIVATE' && doc.status !== 'DRAFT') throw new BadRequestException('this document can no longer be edited');
     if (doc.status === 'DRAFT' && (await this.hasLiveVote(id))) throw new BadRequestException('a vote is in progress — the document is locked');
+    const nextExp = this.nextExpiry(doc.expiresAt, dto.expiresAt);
     await this.prisma.ruleDocument.update({
       where: { id },
-      data: { title: dto.title?.trim() ?? doc.title, contentMd: dto.contentMd ?? doc.contentMd },
+      data: { title: dto.title?.trim() ?? doc.title, contentMd: dto.contentMd ?? doc.contentMd, ...(nextExp !== undefined ? { expiresAt: nextExp } : {}) },
     });
     return this.getOne(id, userId);
   }

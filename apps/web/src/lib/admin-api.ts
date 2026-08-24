@@ -36,6 +36,11 @@ export interface AuditRow {
   occurredAt: string;
 }
 
+export interface MaintenanceState {
+  enabled: boolean;
+  since: string | null;
+}
+
 export interface AdminWalletStatus {
   hotWallet: { address: string | null; balanceAda: number; configured: boolean };
   /** Legacy env TREASURY_ADDRESS — only the platform's home while no
@@ -105,6 +110,12 @@ export const adminApi = {
   health: () => request<AdminHealth>('/health'),
   admins: () => request<AdminRow[]>('/admins'),
   auditLog: () => request<AuditRow[]>('/audit-log'),
+  // §26 — on-demand "Short maintenance mode" toggle (same flag the deploy-guard uses).
+  maintenance: {
+    get: () => request<MaintenanceState>('/maintenance'),
+    enable: () => request<MaintenanceState>('/maintenance/enable', { method: 'POST' }),
+    disable: () => request<MaintenanceState>('/maintenance/disable', { method: 'POST' }),
+  },
   wallet: () => request<AdminWalletStatus>('/wallet'),
   sweepWallet: () => request<{ txHash: string; to: string }>('/wallet/sweep', { method: 'POST' }),
   rotateSeed: () => request<{ address: string | null }>('/wallet/rotate-seed', { method: 'POST' }),

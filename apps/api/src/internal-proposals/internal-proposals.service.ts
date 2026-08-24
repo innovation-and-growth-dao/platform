@@ -166,6 +166,25 @@ export class InternalProposalsService {
       ruleDoc = { id: doc.id, contentMd: doc.contentMd };
     }
 
+    // §28 — decision approval (mirror of rule-document approval on the `decision` table).
+    let decisionRow: { id: string; contentMd: string } | null = null;
+    if (dto.internalType === InternalType.DECISION_APPROVAL) {
+      if (!dto.decisionId) throw new BadRequestException('select a decision for this proposal');
+      const dec = await this.prisma.decision.findUnique({ where: { id: dto.decisionId } });
+      if (!dec || dec.status === 'PRIVATE' || dec.status === 'DELETED') {
+        throw new BadRequestException('the decision must be a published (draft or active) decision');
+      }
+      if (!dto.decisionDeleteRequested && dec.status !== 'DRAFT') {
+        throw new BadRequestException('only a draft decision can be submitted for approval');
+      }
+      const liveVote = await this.prisma.proposal.findFirst({
+        where: { decisionId: dec.id, internalType: InternalType.DECISION_APPROVAL, status: ProposalStatus.ACTIVE },
+        select: { id: true },
+      });
+      if (liveVote) throw new BadRequestException('this decision already has a vote in progress');
+      decisionRow = { id: dec.id, contentMd: dec.contentMd };
+    }
+
     const thresholdPct = await this.thresholdPct(thresholdKind);
     const publicId = await this.nextPublicId();
 
@@ -203,6 +222,9 @@ export class InternalProposalsService {
         ruleDocumentId: internalType === InternalType.RULE_APPROVAL ? ruleDoc!.id : undefined,
         ruleDeleteRequested: internalType === InternalType.RULE_APPROVAL ? !!dto.ruleDeleteRequested : undefined,
         ruleDocContentHash: internalType === InternalType.RULE_APPROVAL ? sha256hex(ruleDoc!.contentMd) : undefined,
+        decisionId: internalType === InternalType.DECISION_APPROVAL ? decisionRow!.id : undefined,
+        decisionDeleteRequested: internalType === InternalType.DECISION_APPROVAL ? !!dto.decisionDeleteRequested : undefined,
+        decisionContentHash: internalType === InternalType.DECISION_APPROVAL ? sha256hex(decisionRow!.contentMd) : undefined,
       },
     });
     // Freeze the eligible-voter set + power now, so voting can start immediately.
@@ -570,6 +592,9 @@ export class InternalProposalsService {
     const ruleDoc = p.internalType === 'RULE_APPROVAL' && p.ruleDocumentId
       ? await this.prisma.ruleDocument.findUnique({ where: { id: p.ruleDocumentId }, select: { id: true, title: true, status: true } })
       : null;
+    const decisionRow = p.internalType === 'DECISION_APPROVAL' && p.decisionId
+      ? await this.prisma.decision.findUnique({ where: { id: p.decisionId }, select: { id: true, title: true, status: true } })
+      : null;
     const pollCfg = (p.pollOptions ?? null) as { multiple?: boolean; options?: string[] } | null;
 
     // For elections, `actors` is a JSON array of {drepId, drepKeyHash, drepIdOnchain, displayName};
@@ -630,6 +655,13 @@ export class InternalProposalsService {
         documentStatus: ruleDoc.status,
         deleteRequested: !!p.ruleDeleteRequested,
         contentHash: p.ruleDocContentHash ?? null,
+      } : null,
+      decision: decisionRow ? {
+        decisionId: decisionRow.id,
+        title: decisionRow.title,
+        decisionStatus: decisionRow.status,
+        deleteRequested: !!p.decisionDeleteRequested,
+        contentHash: p.decisionContentHash ?? null,
       } : null,
       // §10.5 — spending parameters (ADA) + the board-signing action once approved.
       spending: p.internalType === 'SPENDING' ? {
@@ -865,6 +897,9 @@ export class InternalProposalsService {
     if (proposal.internalType === InternalType.RULE_APPROVAL && proposal.ruleDocumentId) {
       await this.applyRuleDecision(proposal.ruleDocumentId, !!proposal.ruleDeleteRequested, approved).catch(() => undefined);
     }
+    if (proposal.internalType === InternalType.DECISION_APPROVAL && proposal.decisionId) {
+      await this.applyDecisionDecision(proposal.decisionId, !!proposal.decisionDeleteRequested, approved).catch(() => undefined);
+    }
     // §10.5 — an approved spending proposal queues the multisig action for the board.
     await this.maybePrepareSpending(proposalId).catch(() => undefined);
     await this.anchorResult(proposalId, status, t).catch(() => undefined); // anchoring never blocks the conclusion
@@ -896,6 +931,31 @@ export class InternalProposalsService {
       thresholdPct: t.kind === 'THRESHOLD' ? t.thresholdPct : 0,
       approved: t.kind === 'THRESHOLD' ? t.approved : false,
       contentHash: p.ruleDocContentHash ?? null,
+      anchorTxHash: anchor?.txHash ?? null,
+    };
+  }
+
+  async decisionVoteScore(proposalId: string) {
+    const sel = { id: true, type: true, publicId: true, status: true, votingEndAt: true, decisionDeleteRequested: true, decisionContentHash: true } as const;
+    let p = await this.prisma.proposal.findUnique({ where: { id: proposalId }, select: sel });
+    if (!p) return null;
+    await this.maybeFinalize({ id: p.id, status: p.status, votingEndAt: p.votingEndAt, type: p.type });
+    p = await this.prisma.proposal.findUnique({ where: { id: proposalId }, select: sel });
+    if (!p) return null;
+    const t = await this.tally(proposalId);
+    const anchor = await this.prisma.anchor.findFirst({ where: { proposalId, kind: 'internal' }, orderBy: { createdAt: 'desc' }, select: { txHash: true } });
+    return {
+      proposalId: p.id,
+      publicId: p.publicId,
+      status: p.status,
+      deleteVote: !!p.decisionDeleteRequested,
+      votingEndAt: p.votingEndAt ? p.votingEndAt.toISOString() : null,
+      eligible: t.kind === 'THRESHOLD' ? t.eligible : 0,
+      voted: t.kind === 'THRESHOLD' ? t.cast : 0,
+      ratioPct: t.kind === 'THRESHOLD' ? t.ratioPct : 0,
+      thresholdPct: t.kind === 'THRESHOLD' ? t.thresholdPct : 0,
+      approved: t.kind === 'THRESHOLD' ? t.approved : false,
+      contentHash: p.decisionContentHash ?? null,
       anchorTxHash: anchor?.txHash ?? null,
     };
   }
@@ -935,6 +995,11 @@ export class InternalProposalsService {
     if (status) await this.prisma.ruleDocument.update({ where: { id: documentId }, data: { status } });
   }
 
+  private async applyDecisionDecision(decisionId: string, deleteRequested: boolean, approved: boolean) {
+    const status = deleteRequested ? (approved ? 'DELETED' : null) : approved ? 'ACTIVE' : 'DRAFT';
+    if (status) await this.prisma.decision.update({ where: { id: decisionId }, data: { status } });
+  }
+
   private async anchorResult(proposalId: string, status: string, t: Awaited<ReturnType<InternalProposalsService['tally']>>) {
     const p = await this.prisma.proposal.findUnique({ where: { id: proposalId } });
     if (!p) return;
@@ -944,7 +1009,9 @@ export class InternalProposalsService {
     const docHash =
       p.internalType === InternalType.RULE_APPROVAL && p.ruleDocContentHash
         ? p.ruleDocContentHash
-        : sha256hex(`${p.title}\n${p.contentMd}`);
+        : p.internalType === InternalType.DECISION_APPROVAL && p.decisionContentHash
+          ? p.decisionContentHash
+          : sha256hex(`${p.title}\n${p.contentMd}`);
     const weighted = p.votingType !== VotingType.ONE_PERSON_ONE_VOTE;
     const style =
       p.votingType === VotingType.BALANCED

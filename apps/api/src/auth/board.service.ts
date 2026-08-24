@@ -16,4 +16,18 @@ export class BoardService {
     const seat = await this.prisma.boardSeat.findFirst({ where: { removedAt: null, drepKeyHash: user.drepKeyHash } });
     return !!seat;
   }
+
+  async isBoardSeated(): Promise<boolean> {
+    const seat = await this.prisma.boardSeat.findFirst({ where: { removedAt: null }, select: { id: true } });
+    return !!seat;
+  }
+
+  // The board reviews Expert/Submitter applications; while no board is seated (pre-election
+  // bootstrap) an admitted DRep may review, so these human-approval-only applications never stall.
+  async canReviewApplications(userId: string): Promise<boolean> {
+    if (await this.isBoardMember(userId)) return true;
+    if (await this.isBoardSeated()) return false;
+    const drep = await this.prisma.drep.findUnique({ where: { userId }, select: { status: true } });
+    return drep?.status === 'ADMITTED';
+  }
 }

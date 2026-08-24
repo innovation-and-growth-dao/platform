@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGua
 import { CurrentUser, type AuthContext } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { BoardGuard } from '../auth/board.guard';
+import { ApplicationReviewGuard } from '../auth/application-review.guard';
 import { SubmitterService } from './submitter.service';
 import { RejectSubmitterDto, SetSubmitterLinkDto, SubmitterApplicationDto } from './dto';
 
@@ -60,27 +61,31 @@ export class DaoSubmittersController {
 }
 
 @Controller('admin/submitters')
-@UseGuards(JwtAuthGuard, BoardGuard)
+@UseGuards(JwtAuthGuard)
 export class BoardSubmittersController {
   constructor(private readonly svc: SubmitterService) {}
 
   @Get('applications')
+  @UseGuards(ApplicationReviewGuard)
   list(@Query('history') history?: string) {
     return this.svc.listApplications(history === '1' || history === 'true');
   }
 
   @Post(':id/approve')
+  @UseGuards(ApplicationReviewGuard)
   approve(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.approve(id, ctx.userId);
   }
 
   @Post(':id/reject')
+  @UseGuards(ApplicationReviewGuard)
   reject(@CurrentUser() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectSubmitterDto) {
     return this.svc.reject(id, dto.reason, ctx.userId);
   }
 
   // §2 — board override of a submitter's cross-wallet link to a DAO member (set or clear).
   @Patch(':id/link')
+  @UseGuards(BoardGuard)
   setLink(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetSubmitterLinkDto) {
     return this.svc.setLink(id, dto.linkedDrepIdOnchain ?? null);
   }

@@ -18,6 +18,7 @@ import { CommentsModule } from './comments/comments.module';
 import { MilestonesModule } from './milestones/milestones.module';
 import { InternalProposalsModule } from './internal-proposals/internal-proposals.module';
 import { RuleDocumentsModule } from './rule-documents/rule-documents.module';
+import { DecisionsModule } from './decisions/decisions.module';
 import { SubcategoriesModule } from './subcategories/subcategories.module';
 import { CardanoModule } from './cardano/cardano.module';
 import { RewardsModule } from './rewards/rewards.module';
@@ -57,6 +58,7 @@ import { DeployModule } from './deploy/deploy.module';
     JobsModule,
     InternalProposalsModule,
     RuleDocumentsModule,
+    DecisionsModule,
     SubcategoriesModule,
     PreferencesModule,
     DeployModule,

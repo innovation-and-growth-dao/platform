@@ -1305,16 +1305,22 @@ export class CardanoQueryService {
     });
     if (!txRes.ok) throw new Error(`koios /address_txs ${txRes.status}`);
     const txRows = (await txRes.json()) as { tx_hash: string; block_time?: number }[];
+    const timeByHash = new Map(txRows.map((r) => [r.tx_hash, r.block_time ?? 0]));
     const hashes = txRows.sort((a, b) => (b.block_time ?? 0) - (a.block_time ?? 0)).slice(0, limit).map((r) => r.tx_hash);
     if (hashes.length === 0) return [];
-    const infoRes = await this.koiosFetch(`/tx_info`, {
+    // /tx_utxos, NOT /tx_info: on this Koios the tx_info `inputs` array comes back EMPTY, so the
+    // input addresses — needed to see what OUR wallets SPENT (outLovelace) — were never attributed,
+    // and every change-return (the anchor wallet's fee-only self-transfers) read as fresh incoming
+    // "anonymous income". /tx_utxos returns inputs AND outputs with resolved payment_addr, so
+    // outLovelace is correct and the treasury view's self-transfer filter can hide those.
+    const utxoRes = await this.koiosFetch(`/tx_utxos`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ _tx_hashes: hashes }), signal: AbortSignal.timeout(15000),
     });
-    if (!infoRes.ok) throw new Error(`koios /tx_info ${infoRes.status}`);
+    if (!utxoRes.ok) throw new Error(`koios /tx_utxos ${utxoRes.status}`);
     const set = new Set(addresses);
-    const infos = (await infoRes.json()) as {
-      tx_hash: string; tx_timestamp?: number;
+    const infos = (await utxoRes.json()) as {
+      tx_hash: string;
       outputs?: { payment_addr?: { bech32?: string }; value?: string }[];
       inputs?: { payment_addr?: { bech32?: string }; value?: string }[];
     }[];
@@ -1323,7 +1329,7 @@ export class CardanoQueryService {
         let inLovelace = 0n, outLovelace = 0n;
         for (const o of tx.outputs ?? []) if (o.payment_addr?.bech32 && set.has(o.payment_addr.bech32)) { try { inLovelace += BigInt(o.value ?? '0'); } catch { /* skip */ } }
         for (const i of tx.inputs ?? []) if (i.payment_addr?.bech32 && set.has(i.payment_addr.bech32)) { try { outLovelace += BigInt(i.value ?? '0'); } catch { /* skip */ } }
-        return { hash: tx.tx_hash, time: tx.tx_timestamp ?? 0, inLovelace, outLovelace };
+        return { hash: tx.tx_hash, time: timeByHash.get(tx.tx_hash) ?? 0, inLovelace, outLovelace };
       })
       .sort((a, b) => b.time - a.time);
   }

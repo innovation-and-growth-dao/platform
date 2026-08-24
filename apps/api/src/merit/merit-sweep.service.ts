@@ -34,8 +34,10 @@ export class MeritSweepService implements OnModuleInit, OnModuleDestroy {
 
   async run(): Promise<void> {
     try {
+      if (!(await this.merit.meritEnabled())) return; // §13 merit disabled → nothing to sweep
       await this.missedFilter();
       await this.missedDv();
+      await this.missedInternal();
       await this.missedMilestone();
       await this.payouts();
       await this.rewardDistributionLate();
@@ -131,6 +133,30 @@ export class MeritSweepService implements OnModuleInit, OnModuleDestroy {
           if (await this.exempt(e.drepId, win?.start, win?.end)) continue;
           await this.merit.tryAward(e.drepId, 'MISSED_DV', p.id);
         }
+      }
+    }
+  }
+
+  /** §13.3 — DAO members eligible to vote on an internal proposal who didn't, once its voting
+   *  window has closed → −1 each. Skipped for anyone whose avoid period covers the window. */
+  private async missedInternal(): Promise<void> {
+    const now = new Date();
+    const proposals = await this.prisma.proposal.findMany({
+      where: { type: 'INTERNAL', status: { in: ['APPROVED', 'REJECTED'] }, votingEndAt: { not: null, lt: now } },
+      select: { id: true, createdAt: true, votingEndAt: true },
+    });
+    for (const p of proposals) {
+      const snap = await this.prisma.voteSnapshot.findFirst({ where: { proposalId: p.id }, select: { id: true } });
+      if (!snap) continue;
+      const entries = await this.prisma.voteSnapshotEntry.findMany({ where: { snapshotId: snap.id }, select: { drepId: true } });
+      for (const e of entries) {
+        const voted = await this.prisma.vote.findFirst({
+          where: { proposalId: p.id, drepId: e.drepId, phase: VotePhase.INTERNAL },
+          select: { id: true },
+        });
+        if (voted) continue;
+        if (await this.exempt(e.drepId, p.createdAt, p.votingEndAt)) continue;
+        await this.merit.tryAward(e.drepId, 'MISSED_INTERNAL', p.id);
       }
     }
   }

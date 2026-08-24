@@ -19,6 +19,7 @@ import { TreasuryOverview } from './treasury-overview';
 import { ActiveProposals } from './active-proposals';
 import { InternalProposals } from './internal-proposals';
 import { RuleDocuments } from './rule-documents';
+import { Decisions } from './decisions';
 import { ProposalDetail } from './proposal-detail';
 import { JoinDaoButton } from './join-dao-button';
 import { NotificationBadge } from './notification-badge';
@@ -29,7 +30,7 @@ import { WalletStatusBanner } from './wallet-status-banner';
 import { useTodoCounts, todoTotal } from '@/lib/use-todo-counts';
 import { HealthBadge } from '@/app/health-badge';
 
-type View = 'overview' | 'members' | 'submitters' | 'experts' | 'me' | 'rounds' | 'proposals' | 'internal' | 'rules' | 'proofs' | 'treasury' | 'setup';
+type View = 'overview' | 'members' | 'submitters' | 'experts' | 'me' | 'rounds' | 'proposals' | 'internal' | 'rules' | 'decisions' | 'proofs' | 'treasury' | 'setup';
 const NAV: { key: View; label: string; icon: string; boardOnly?: boolean }[] = [
   // §2 — "My area" first: it is the member's home (to-dos, profile, proposals).
   { key: 'me', label: 'My area', icon: 'user' },
@@ -41,12 +42,13 @@ const NAV: { key: View; label: string; icon: string; boardOnly?: boolean }[] = [
   { key: 'proposals', label: 'Funding proposals', icon: 'file-text' },
   { key: 'internal', label: 'Internal proposals', icon: 'clipboard' },
   { key: 'rules', label: 'Rule Documents', icon: 'file-text' },
+  { key: 'decisions', label: 'Decisions', icon: 'clipboard' },
   { key: 'proofs', label: 'On-chain proofs', icon: 'shield' },
   { key: 'treasury', label: 'Treasury', icon: 'landmark' },
   { key: 'setup', label: 'Platform setup', icon: 'settings', boardOnly: true },
 ];
 // Views a logged-out visitor may browse read-only (no My area, no board Setup).
-const PUBLIC_VIEWS: View[] = ['overview', 'members', 'rounds', 'proposals', 'treasury', 'proofs', 'rules'];
+const PUBLIC_VIEWS: View[] = ['overview', 'members', 'rounds', 'proposals', 'treasury', 'proofs', 'rules', 'decisions'];
 
 export function HomeShell() {
   const { profile, loading } = useAuth();
@@ -172,6 +174,8 @@ export function HomeShell() {
             <OnChainProofs />
           ) : pubView === 'rules' ? (
             <RuleDocuments />
+          ) : pubView === 'decisions' ? (
+            <Decisions />
           ) : (
             <PublicLanding onConnect={() => setWalletOpen(true)} onExplore={() => setView('proposals')} />
           )}
@@ -253,6 +257,8 @@ export function HomeShell() {
           <InternalProposals />
         ) : view === 'rules' ? (
           <RuleDocuments />
+        ) : view === 'decisions' ? (
+          <Decisions />
         ) : view === 'proofs' ? (
           <OnChainProofs />
         ) : view === 'treasury' ? (

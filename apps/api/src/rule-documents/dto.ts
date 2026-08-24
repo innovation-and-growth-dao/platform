@@ -3,11 +3,13 @@ import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 export class CreateRuleDocDto {
   @IsString() @MinLength(3) @MaxLength(200) title!: string;
   @IsString() @MinLength(1) contentMd!: string;
+  @IsOptional() expiresAt?: string | null;
 }
 
 export class UpdateRuleDocDto {
   @IsOptional() @IsString() @MinLength(3) @MaxLength(200) title?: string;
   @IsOptional() @IsString() @MinLength(1) contentMd?: string;
+  @IsOptional() expiresAt?: string | null;
 }
 
 export class RuleCommentDto {

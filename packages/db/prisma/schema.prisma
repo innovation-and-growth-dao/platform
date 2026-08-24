@@ -52,6 +52,8 @@ model AppUser {
   treasuryBucketsCreated TreasuryBucket[]
   ruleDocuments          RuleDocument[]           @relation("RuleDocOwner")
   ruleDocumentComments   RuleDocumentComment[]
+  decisions              Decision[]               @relation("DecisionOwner")
+  decisionComments       DecisionComment[]
 
   @@map("app_user")
 }
@@ -500,6 +502,10 @@ model Proposal {
   ruleDocumentId      String?  @map("rule_document_id") @db.Uuid
   ruleDeleteRequested Boolean  @default(false) @map("rule_delete_requested")
   ruleDocContentHash  String?  @map("rule_doc_content_hash")
+  // §28 — decision approval (mirrors the rule-document fields above).
+  decisionId              String?  @map("decision_id") @db.Uuid
+  decisionDeleteRequested Boolean  @default(false) @map("decision_delete_requested")
+  decisionContentHash     String?  @map("decision_content_hash")
 
   // common
   votingType           String // ONE_PERSON_ONE_VOTE or BALANCED
@@ -542,6 +548,7 @@ model Proposal {
   budgetChangeRequests BudgetChangeRequest[]
   stopFundings   StopFundingProposal[]
   ruleDocument   RuleDocument?      @relation("RuleDocProposals", fields: [ruleDocumentId], references: [id])
+  decision       Decision?          @relation("DecisionProposals", fields: [decisionId], references: [id])
 
   @@index([roundId, status])
   @@index([type, status])
@@ -1534,6 +1541,7 @@ model RuleDocument {
   ownerUserId String    @map("owner_user_id") @db.Uuid
   owner       AppUser   @relation("RuleDocOwner", fields: [ownerUserId], references: [id])
   publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6) // §27 — null = never expires
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1561,4 +1569,42 @@ model RuleDocumentComment {
 
   @@index([documentId])
   @@map("rule_document_comment")
+}
+
+// §28 — Decisions (same lifecycle as Rule Documents), with an optional expiry.
+model Decision {
+  id          String    @id @default(uuid()) @db.Uuid
+  title       String
+  contentMd   String    @map("content_md")
+  status      String    @default("PRIVATE") // PRIVATE | DRAFT | ACTIVE | DELETED
+  ownerUserId String    @map("owner_user_id") @db.Uuid
+  owner       AppUser   @relation("DecisionOwner", fields: [ownerUserId], references: [id])
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6) // §28 — null = never expires
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  proposals Proposal[]        @relation("DecisionProposals")
+  comments  DecisionComment[]
+
+  @@index([status])
+  @@map("decision")
+}
+
+model DecisionComment {
+  id           String    @id @default(uuid()) @db.Uuid
+  decisionId   String    @map("decision_id") @db.Uuid
+  parentId     String?   @map("parent_id") @db.Uuid
+  authorUserId String    @map("author_user_id") @db.Uuid
+  contentMd    String    @map("content_md")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  decision Decision          @relation(fields: [decisionId], references: [id])
+  author   AppUser           @relation(fields: [authorUserId], references: [id])
+  parent   DecisionComment?  @relation("DecisionCommentParent", fields: [parentId], references: [id])
+  replies  DecisionComment[] @relation("DecisionCommentParent")
+
+  @@index([decisionId])
+  @@map("decision_comment")
 }

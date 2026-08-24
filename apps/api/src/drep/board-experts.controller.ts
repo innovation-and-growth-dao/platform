@@ -1,11 +1,11 @@
 import { Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { BoardGuard } from '../auth/board.guard';
+import { ApplicationReviewGuard } from '../auth/application-review.guard';
 import { DrepService } from './drep.service';
 
 // §25.5 — board reviews Expert applications (non-DRep ADA holders for milestone review).
 @Controller('admin/experts')
-@UseGuards(JwtAuthGuard, BoardGuard)
+@UseGuards(JwtAuthGuard, ApplicationReviewGuard)
 export class BoardExpertsController {
   constructor(private readonly drep: DrepService) {}
 

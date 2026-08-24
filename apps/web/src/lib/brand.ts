@@ -26,7 +26,9 @@ const INNOVATION_GROWTH: Brand = {
 };
 
 const DREP_DAO: Brand = {
-  name: 'DRep DAO',
+  // The council, not the acronym alone. "DRep" on its own names the role a
+  // person holds in Cardano governance, not this organisation.
+  name: 'DRep Council',
   icon: '/icons/drep-globe.svg', // globe
   description: 'Cardano governance DAO platform',
   kind: 'governance',

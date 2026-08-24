@@ -39,7 +39,34 @@ export class DrepService {
    * VotingPower = log10(stake_ADA) × (1 + merit/200). Stake is the DRep's
    * on-chain voting power (Koios `amount`); merit is the clamped ledger sum.
    */
+  // §UI perf — assembling the member list runs per-member on-chain reads (voting power +
+  // CIP-119 metadata). A short-lived snapshot serves warm loads instantly and refreshes in
+  // the background, so a slow Koios call can never delay — or hang — the members page.
+  private membersCache: { value: Awaited<ReturnType<DrepService['computeDaoMembers']>>; expiresAt: number } | null = null;
+  private membersInflight: Promise<Awaited<ReturnType<DrepService['computeDaoMembers']>>> | null = null;
+  private readonly MEMBERS_TTL_MS = 30_000;
+
   async listDaoMembers() {
+    const c = this.membersCache;
+    if (c) {
+      if (c.expiresAt <= Date.now() && !this.membersInflight) {
+        this.membersInflight = this.computeDaoMembers()
+          .then((v) => { this.membersCache = { value: v, expiresAt: Date.now() + this.MEMBERS_TTL_MS }; return v; })
+          .catch(() => c.value) // a failed refresh keeps the last good snapshot
+          .finally(() => { this.membersInflight = null; });
+      }
+      return c.value; // stale-while-revalidate: warm loads never wait on Koios
+    }
+    // Cold start: compute once, sharing the in-flight promise across concurrent first hits.
+    if (!this.membersInflight) {
+      this.membersInflight = this.computeDaoMembers()
+        .then((v) => { this.membersCache = { value: v, expiresAt: Date.now() + this.MEMBERS_TTL_MS }; return v; })
+        .finally(() => { this.membersInflight = null; });
+    }
+    return this.membersInflight;
+  }
+
+  private async computeDaoMembers() {
     const seats = await this.prisma.boardSeat.findMany({ where: { removedAt: null }, orderBy: { addedAt: 'asc' } });
     const boardKeys = new Set(seats.map((s) => s.drepKeyHash));
     const admitted = await this.prisma.drep.findMany({
@@ -98,30 +125,42 @@ export class DrepService {
     const minDelegs = numCfg('MIN_DELEGATORS');
     const minStakeLovelace = BigInt(Math.round(numCfg('MIN_DELEGATOR_STAKE_ADA'))) * 1_000_000n;
     const meritMax = numCfg('MERIT_POINT_MAX'); // §13 merit cap (runtime-configurable)
+    const meritEnabled = boolCfg('MERIT_ENABLED'); // §13 master switch (on by default for the funding edition)
     const activityWindow = numCfg('MINIMUM_VOTES_CASTED');
     const activityNeed = Math.ceil((activityWindow * numCfg('MINIMUM_DREP_ACTIVITY')) / 100);
     const onlyWithRationale = boolCfg('ONLY_VOTES_WITH_RATIONALE');
 
-    // §4 — on-chain DRep VOTING power (CIP-1694 vote delegation), live: total power +
-    // delegator count, plus own power + qualifying delegators for the eligibility flag.
-    const vp = await this.cardano.drepEntryMetricsBatch(
-      rows.map((r) => ({ drepId: r.drepId, ownStakeAddress: r.stakeAddress })),
-      minStakeLovelace,
-    );
-    // §14.1 activity gate — only query when enabled (1 + N Koios calls); off by default.
-    const activity = requireActivity
-      ? await this.cardano.drepActivityMetricsBatch(rows.map((r) => r.drepId), activityWindow, onlyWithRationale)
-      : null;
-    // §CIP-119 — on-chain DRep name + image (else our stored name + a generic avatar).
-    const meta = await this.cardano.drepMetadata(rows.map((r) => r.drepId));
+    // §4 — on-chain DRep VOTING power (CIP-1694 vote delegation): total power + delegator
+    // count come from a single drep_info call. Own power + qualifying-delegator counts need a
+    // per-delegator scan (slow for DReps with thousands of delegators), so they're only
+    // requested when the power gate is actually enabled — otherwise they aren't used at all.
+    // All on-chain reads run concurrently, each bounded: a slow/hung Koios call degrades to
+    // empty (0 power / stored name / no image) instead of stalling the page.
+    const withDeadline = <T>(p: Promise<T>, fallback: T, ms = 9_000): Promise<T> =>
+      Promise.race([p, new Promise<T>((resolve) => { setTimeout(() => resolve(fallback), ms).unref?.(); })]);
+    const [vp, activity, meta] = await Promise.all([
+      withDeadline(
+        this.cardano.drepEntryMetricsBatch(
+          rows.map((r) => ({ drepId: r.drepId, ownStakeAddress: requirePower ? r.stakeAddress : undefined })),
+          requirePower ? minStakeLovelace : 0n,
+        ),
+        new Map(),
+      ),
+      // §14.1 activity gate — only query when enabled (1 + N Koios calls); off by default.
+      requireActivity
+        ? this.cardano.drepActivityMetricsBatch(rows.map((r) => r.drepId), activityWindow, onlyWithRationale)
+        : Promise.resolve(null),
+      // §CIP-119 — on-chain DRep name + image (else our stored name + a generic avatar).
+      withDeadline(this.cardano.drepMetadata(rows.map((r) => r.drepId)), new Map()),
+    ]);
 
     const members = await Promise.all(
       rows.map(async (r) => {
-        const merit = r.drepRowId ? await this.currentMerit(r.drepRowId, meritMax) : 0;
+        const merit = meritEnabled && r.drepRowId ? await this.currentMerit(r.drepRowId, meritMax) : 0;
         const power = vp.get(r.drepId) ?? { votingPowerLovelace: 0n, delegators: 0, ownVotingPowerLovelace: 0n, qualifyingDelegators: 0 };
         const m = meta.get(r.drepId);
         const base = basePower(power.votingPowerLovelace);
-        const mult = meritMultiplier(merit, meritMax);
+        const mult = meritEnabled ? meritMultiplier(merit, meritMax) : 1;
         // §14.1 — does the member still meet the ENABLED entry gates? A shortfall is shown
         // but the member remains a full voting member.
         // - Power gate: board is exempt (seated via genesis, not the delegation threshold).
@@ -655,6 +694,7 @@ export class DrepService {
       } else {
         row = await this.prisma.drep.create({ data: { userId, ...data } });
       }
+      this.membersCache = null; // membership/profile changed → drop the snapshot so it reflects now
       // A free-period admission still leaves an on-chain proof (like a submitter admission),
       // recording that the member joined automatically because no board was seated. Best-effort.
       if (freePeriod) {
@@ -877,6 +917,7 @@ export class DrepService {
         where: { id: applicant.id },
         data: { status, admittedAt: status === DRepStatus.ADMITTED ? new Date() : null },
       });
+      this.membersCache = null; // membership changed → drop the snapshot so it reflects now
       // §C — on a decision, anchor the full signed vote set + tally on-chain (one tx).
       if (status === DRepStatus.ADMITTED || status === DRepStatus.REJECTED) {
         anchorTxHash = await this.anchorAdmission(applicant.id, applicant.drepIdOnchain, status, yes, no, threshold);

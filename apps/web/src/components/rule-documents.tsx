@@ -37,6 +37,21 @@ const STATUS_BADGE: Record<string, string> = {
   PRIVATE: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
 };
 
+// §27/§28 expiry helpers.
+const ymd = (iso: string) => iso.slice(0, 10);
+const tomorrowYmd = () => new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+const toExpiryIso = (d: string) => new Date(d + 'T23:59:59').toISOString();
+const defaultExpiry = () => new Date(Date.now() + 365 * 864e5).toISOString();
+function ExpiryLine({ iso }: { iso: string | null }) {
+  if (!iso) return <div className="mb-4 text-xs text-neutral-500">Expiration: <span className="font-medium text-neutral-700 dark:text-neutral-300">never</span></div>;
+  const expired = new Date(iso).getTime() < Date.now();
+  return (
+    <div className="mb-4 text-xs text-neutral-500">
+      Expiration: <span className={`font-medium ${expired ? 'text-red-600 dark:text-red-400' : 'text-neutral-700 dark:text-neutral-300'}`}>{new Date(iso).toLocaleDateString()}{expired ? ' (expired)' : ''}</span>
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: string }) {
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE[status] ?? STATUS_BADGE.DRAFT}`}>{status}</span>;
 }
@@ -252,6 +267,8 @@ function RuleDocDetailView({ id, onBack, onStartVote }: { id: string; onBack: ()
           {doc.status === 'ACTIVE' && doc.approvedAt ? ` · approved ${new Date(doc.approvedAt).toLocaleDateString()}` : ''}
           {doc.status === 'ACTIVE' ? ' · obligatory to follow' : doc.status === 'DRAFT' ? ' · draft — not yet obligatory' : ''}</div>
 
+        <ExpiryLine iso={doc.expiresAt} />
+
         <div className="prose max-w-none dark:prose-invert"><Markdown>{doc.contentMd}</Markdown></div>
 
         {doc.lastVote?.status === 'ACTIVE' ? (
@@ -353,18 +370,19 @@ export function RuleDocuments() {
 function MyDocEditor({ id, onDone }: { id: string | null; onDone: () => void }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (id) ruleDocumentsApi.get(id).then((d) => { setTitle(d.title); setContent(d.contentMd); }).catch(() => undefined);
+    if (id) ruleDocumentsApi.get(id).then((d) => { setTitle(d.title); setContent(d.contentMd); setExpiresAt(d.expiresAt); }).catch(() => undefined);
   }, [id]);
 
   const save = async () => {
     setError(null); setBusy(true);
     try {
-      if (id) await ruleDocumentsApi.update(id, { title, contentMd: content });
-      else await ruleDocumentsApi.create({ title, contentMd: content });
+      if (id) await ruleDocumentsApi.update(id, { title, contentMd: content, expiresAt });
+      else await ruleDocumentsApi.create({ title, contentMd: content, expiresAt });
       onDone();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'save failed');
@@ -383,7 +401,18 @@ function MyDocEditor({ id, onDone }: { id: string | null; onDone: () => void }) 
         className="mb-3 w-full rounded-lg border border-neutral-300 p-2 text-sm dark:border-neutral-600 dark:bg-neutral-900"
       />
       <MarkdownEditor value={content} onChange={setContent} title="Content" minRows={10} placeholder="Write the rules… (supports **bold**, *italics*, ## headings, lists)" />
-      {error ? <p className="mt-2 text-xs text-red-500">{error}</p> : null}
+      <div className="mt-3 space-y-1.5">
+        <span className="text-sm font-medium">Expiration</span>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={expiresAt === null} onChange={(e) => setExpiresAt(e.target.checked ? null : defaultExpiry())} />
+          Never expires
+        </label>
+        {expiresAt !== null ? (
+          <input type="date" value={ymd(expiresAt)} min={tomorrowYmd()} onChange={(e) => setExpiresAt(e.target.value ? toExpiryIso(e.target.value) : null)} className="rounded-lg border border-neutral-300 p-2 text-sm dark:border-neutral-600 dark:bg-neutral-900" />
+        ) : null}
+        <p className="text-xs text-neutral-400">A future date, or never (default). Once set, the expiry can only be shortened.</p>
+      </div>
+            {error ? <p className="mt-2 text-xs text-red-500">{error}</p> : null}
       <div className="mt-3 flex gap-2">
         <button disabled={busy || title.trim().length < 3 || content.trim().length < 1} onClick={save} className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">
           {busy ? 'Saving…' : 'Save'}
