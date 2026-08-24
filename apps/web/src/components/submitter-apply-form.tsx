@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { submitterApi, daoApi, type MySubmitter, type DaoMember } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
+import { brand } from '@/lib/brand';
 import { COUNTRIES } from '@/lib/countries';
 import { ConfirmDialog } from './confirm-dialog';
 import { MarkdownEditor } from './markdown';
@@ -135,7 +136,11 @@ export function SubmitterApplyForm({ onChange }: { onChange?: () => void }) {
       <div>
         <h3 className="text-base font-semibold">{mine ? t('Submitter profile') : t('Become a submitter')}</h3>
         {approved ? (
-          <p className="text-sm text-emerald-600">{t('You are an approved submitter ✅ — submit proposals under')} <strong>{t('My proposals')}</strong>. {t('You can still update your profile below.')}</p>
+          <p className="text-sm text-emerald-600">
+            {brand.kind === 'funding'
+              ? <>{t('You are an approved submitter ✅ — submit proposals under')} <strong>{t('My proposals')}</strong>. {t('You can still update your profile below.')}</>
+              : <>{t('You are an approved submitter ✅ — you can raise')} <strong>{t('Requests')}</strong> {t('(this functionality is coming soon)')}. {t('You can still update your profile below.')}</>}
+          </p>
         ) : mine?.status === 'PENDING' ? (
           <p className="text-sm text-amber-600">{t('Your application is under board review. You can update it below.')}</p>
         ) : mine?.status === 'LEFT' ? (

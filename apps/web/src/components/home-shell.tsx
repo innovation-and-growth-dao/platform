@@ -101,7 +101,7 @@ export function HomeShell() {
     return (
       <div className="min-h-screen">
         <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/85 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/80">
-          <div className="mx-auto max-w-6xl px-4 sm:px-5">
+          <div className="mx-auto max-w-7xl px-4 sm:px-5">
             <div className="flex items-center gap-4 py-3">
             <button onClick={() => setView('overview')} className="flex items-center gap-2.5 font-semibold tracking-tight">
               <img src={brand.icon} alt="" className="h-7 w-7" />
@@ -110,12 +110,12 @@ export function HomeShell() {
                   turned "DRep DAO" into "DRep" — the name of a role in Cardano
                   governance rather than of this organisation. A shortening that
                   changes what a word refers to is not a shortening. */}
-              <span className="hidden sm:inline">{brand.name}</span>
+              <span className="hidden whitespace-nowrap sm:inline">{brand.name}</span>
             </button>
             <nav className="ml-2 hidden items-center gap-0.5 md:flex">
               {NAV.filter((n) => PUBLIC_VIEWS.includes(n.key)).map((n) => (
                 <button key={n.key} onClick={() => setView(n.key)}
-                  className={`rounded-lg px-3 py-1.5 text-[13px] ${
+                  className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] ${
                     pubView === n.key
                       ? 'bg-neutral-100 font-semibold text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
                       : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
@@ -123,13 +123,10 @@ export function HomeShell() {
                   {t(n.label === 'DAO Member overview' ? 'Overview' : n.label)}
                 </button>
               ))}
-              <span className="ml-1 inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[13px] text-neutral-400 opacity-60 dark:text-neutral-500">
-                {t('My area')}<span className="text-emerald-500">•</span>
-              </span>
             </nav>
             <div className="relative ml-auto flex items-center gap-3">
               <button onClick={() => setWalletOpen((o) => !o)}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-[13.5px] font-semibold text-white hover:bg-emerald-700">
+                className="whitespace-nowrap rounded-lg bg-emerald-600 px-4 py-2 text-[13.5px] font-semibold text-white hover:bg-emerald-700">
                 {t('Connect wallet')}
               </button>
               {walletOpen ? (
@@ -158,7 +155,7 @@ export function HomeShell() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-5">
+        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-5">
           {openProposal ? (
             <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
               <ProposalDetail id={openProposal} onBack={() => setParams({ proposal: null })} />
