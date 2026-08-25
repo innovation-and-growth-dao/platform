@@ -6,13 +6,21 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 // legacy plaintext value unchanged, so migration is non-breaking and idempotent.
 const PREFIX = 'enc:v1:';
 
+function isProdEnv(): boolean {
+  return process.env.NODE_ENV === 'production' || process.env.CARDANO_NETWORK === 'Mainnet';
+}
+
 function kek(): Buffer {
   const raw = process.env.SECRET_ENC_KEY;
   if (!raw) throw new Error('SECRET_ENC_KEY is not set — cannot encrypt/decrypt secrets (SEC-02)');
-  if (/^[0-9a-fA-F]{64}$/.test(raw)) return Buffer.from(raw, 'hex'); // 32-byte hex
+  if (/^[0-9a-fA-F]{64}$/.test(raw)) return Buffer.from(raw, 'hex'); // 32-byte hex — the only accepted prod form
   const b64 = Buffer.from(raw, 'base64');
   if (b64.length === 32) return b64; // 32-byte base64
-  return createHash('sha256').update(raw, 'utf8').digest(); // any other string → derive 32 bytes
+  // SEC-02a — never derive a KEK from a low-entropy string in production; demand real 32-byte key material.
+  if (isProdEnv()) {
+    throw new Error('SECRET_ENC_KEY must be 32 random bytes as 64 hex chars or 32-byte base64 (SEC-02a)');
+  }
+  return createHash('sha256').update(raw, 'utf8').digest(); // dev convenience only
 }
 
 export function isEncrypted(value: string | null | undefined): boolean {
@@ -42,8 +50,7 @@ export function decryptSecret(value: string | null | undefined): string | null {
 
 /** Fail-fast at startup: in production the KEK must be present and usable. */
 export function assertSecretKek(): void {
-  const isProd = process.env.NODE_ENV === 'production' || process.env.CARDANO_NETWORK === 'Mainnet';
-  if (!isProd) return;
+  if (!isProdEnv()) return;
   const roundtrip = decryptSecret(encryptSecret('kek-selftest'));
   if (roundtrip !== 'kek-selftest') throw new Error('SECRET_ENC_KEY self-test failed (SEC-02)');
 }

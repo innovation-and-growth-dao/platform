@@ -24,8 +24,8 @@ export class ActivityInterceptor implements NestInterceptor {
       path.includes('/internal/metrics');
     if (!skip) {
       const cookie = (req.cookies?.[SESSION_COOKIE] as string | undefined) ?? null;
-      const xff = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim();
-      const client = cookie ? `s:${cookie.slice(0, 12)}` : `ip:${xff || req.ip || 'anon'}`;
+      // SEC-06 — bucket by the trusted framework IP (trust proxy=1), not the spoofable XFF header.
+      const client = cookie ? `s:${cookie.slice(0, 12)}` : `ip:${req.ip || 'anon'}`;
       this.tracker.record(client, req.method, path);
     }
     return next.handle();

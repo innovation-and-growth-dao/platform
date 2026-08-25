@@ -22,7 +22,7 @@ model AppUser {
   stakeKeyHash String   @unique @map("stake_key_hash")
   stakeAddress String   @map("stake_address")
   displayName  String?  @map("display_name")
-  drepKeyHash  String?  @map("drep_key_hash") // CIP-95 DRep key hash (on-chain DRep identity), if any
+  drepKeyHash  String?  @unique @map("drep_key_hash") // SEC-01: unique among non-null (one user per DRep key); Postgres allows many NULLs
   drepRegistered Boolean @default(false) @map("drep_registered") // verified on-chain (registered + active) at last login
   // §20 personal preferences: which block explorer this member's on-chain links use.
   explorerPref       String? @map("explorer_pref") // cardanoscan | cexplorer | adastat | custom

@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser';
 import { json, urlencoded, type Request, type Response, type NextFunction } from 'express';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
-import { assertSecretKek, encryptSecret, isEncrypted } from './common/secret-cipher';
+import { assertSecretKek, decryptSecret, encryptSecret, isEncrypted } from './common/secret-cipher';
 
 // JSON.stringify can't serialize BigInt natively — endpoints returning raw
 // Prisma rows with BigInt columns (amounts in lovelace, etc.) used to 500.
@@ -73,8 +73,9 @@ async function bootstrap() {
   // SEC-02 — require a working secret KEK in production, then encrypt any legacy plaintext secrets at rest. Idempotent + backward-compatible.
   assertSecretKek();
   if (process.env.SECRET_ENC_KEY) {
+    const prisma = app.get(PrismaService);
+    const isProd = process.env.NODE_ENV === 'production' || process.env.CARDANO_NETWORK === 'Mainnet';
     try {
-      const prisma = app.get(PrismaService);
       let n = 0;
       for (const row of await prisma.platformSecret.findMany()) {
         if (!isEncrypted(row.value)) { await prisma.platformSecret.update({ where: { key: row.key }, data: { value: encryptSecret(row.value) } }); n++; }
@@ -83,8 +84,24 @@ async function bootstrap() {
         if (!isEncrypted(t.totpSecret)) { await prisma.admin2fa.update({ where: { adminId: t.adminId }, data: { totpSecret: encryptSecret(t.totpSecret) } }); n++; }
       }
       if (n) Logger.log(`SEC-02: encrypted ${n} at-rest secret(s)`, 'Bootstrap');
+      // SEC-02b — fail closed: after migration, no protected value may remain plaintext, and every
+      // stored ciphertext must authenticate under the current KEK. Abort startup in production otherwise.
+      const secrets = await prisma.platformSecret.findMany();
+      const twofa = await prisma.admin2fa.findMany();
+      const bad: string[] = [];
+      for (const row of secrets) {
+        if (row.value && !isEncrypted(row.value)) bad.push(`platformSecret:${row.key}:plaintext`);
+        else if (row.value) { try { decryptSecret(row.value); } catch { bad.push(`platformSecret:${row.key}:undecryptable`); } }
+      }
+      for (const t of twofa) {
+        if (t.totpSecret && !isEncrypted(t.totpSecret)) bad.push(`admin2fa:${t.adminId}:plaintext`);
+        else if (t.totpSecret) { try { decryptSecret(t.totpSecret); } catch { bad.push(`admin2fa:${t.adminId}:undecryptable`); } }
+      }
+      if (bad.length) throw new Error(`unprotected/undecryptable at-rest secrets: ${bad.join(', ')}`);
     } catch (e) {
-      Logger.warn(`SEC-02 secret migration skipped: ${e instanceof Error ? e.message : e}`, 'Bootstrap');
+      const msg = `SEC-02 secret migration/verification failed: ${e instanceof Error ? e.message : e}`;
+      if (isProd) throw new Error(msg); // fail closed in production
+      Logger.warn(msg, 'Bootstrap'); // dev only: log and continue
     }
   }
 

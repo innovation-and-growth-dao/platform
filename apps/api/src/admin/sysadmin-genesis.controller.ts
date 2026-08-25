@@ -24,7 +24,7 @@ export class SysadminGenesisController {
 
   @Post('approve')
   approve(@CurrentAdmin() admin: AdminIdentity, @Req() req: Request) {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+    const ip = req.ip /* SEC-06: trusted framework IP, not spoofable XFF */;
     return this.genesis.approve(admin.adminId, ip, req.headers['user-agent']);
   }
 
@@ -36,14 +36,14 @@ export class SysadminGenesisController {
   // Manual insert — one board member at a time (name + drep_id), verified on-chain.
   @Post('board')
   addMember(@CurrentAdmin() admin: AdminIdentity, @Body() dto: GenesisBoardMemberDto, @Req() req: Request) {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+    const ip = req.ip /* SEC-06: trusted framework IP, not spoofable XFF */;
     return this.genesis.addBoardMember(admin.adminId, dto.name, dto.drep_id, ip, req.headers['user-agent']);
   }
 
   // Remove a single board member by drep_id (frees a seat; file can be re-loaded after).
   @Post('board/remove')
   removeMember(@CurrentAdmin() admin: AdminIdentity, @Body() dto: GenesisRemoveDto, @Req() req: Request) {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+    const ip = req.ip /* SEC-06: trusted framework IP, not spoofable XFF */;
     return this.genesis.removeBoardMember(admin.adminId, dto.drep_id, ip, req.headers['user-agent']);
   }
 }
