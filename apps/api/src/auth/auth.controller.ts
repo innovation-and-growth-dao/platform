@@ -15,6 +15,7 @@ import { AuthService, SESSION_COOKIE } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { NonceRequestDto, VerifyRequestDto } from './dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { CurrentUser, AuthContext } from './current-user.decorator';
 
 @Controller('auth')
@@ -27,6 +28,7 @@ export class AuthController {
 
   // POST /api/v1/auth/nonce → message for the wallet to sign
   @Post('nonce')
+  @RateLimit({ points: 5, durationSec: 60, by: 'ip' }, { points: 3, durationSec: 60, by: 'stakeBody' })
   async getNonce(@Body() dto: NonceRequestDto) {
     if (!isStakeAddress(dto.stakeAddress)) {
       throw new BadRequestException('stakeAddress must be a bech32 stake address (stake1.../stake_test1...)');
@@ -36,6 +38,7 @@ export class AuthController {
 
   // POST /api/v1/auth/verify → check CIP-8 signature, set session cookie
   @Post('verify')
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip' }, { points: 5, durationSec: 60, by: 'stakeBody' })
   async verify(@Body() dto: VerifyRequestDto, @Res({ passthrough: true }) res: Response) {
     if (!isStakeAddress(dto.stakeAddress)) {
       throw new BadRequestException('stakeAddress must be a bech32 stake address');

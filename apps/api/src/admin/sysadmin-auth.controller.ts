@@ -10,6 +10,7 @@ import { AdminAuditService } from './admin-audit.service';
 import { AdminGuard } from './admin.guard';
 import { CurrentAdmin } from './current-admin.decorator';
 import { Admin2faDto, AdminLoginDto } from './dto';
+import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 
 function adminCookieOptions(secure: boolean) {
   return {
@@ -35,6 +36,10 @@ export class SysadminAuthController {
   }
 
   @Post('login')
+  @RateLimit(
+    { points: 5, durationSec: 900, by: 'accountBody', failClosed: true },
+    { points: 30, durationSec: 60, by: 'ip', failClosed: true },
+  )
   async login(@Body() dto: AdminLoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const ip = this.clientIp(req);
     const result = await this.auth.login(dto.username, dto.password, ip);
@@ -47,6 +52,7 @@ export class SysadminAuthController {
   }
 
   @Post('login/2fa')
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip', failClosed: true })
   async login2fa(@Body() dto: Admin2faDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const { sessionToken, admin } = await this.auth.complete2fa(dto.pendingToken, dto.code);
     this.setSession(res, sessionToken);
@@ -55,6 +61,7 @@ export class SysadminAuthController {
   }
 
   @Post('login/recovery')
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip', failClosed: true })
   async loginRecovery(@Body() dto: Admin2faDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const { sessionToken, admin } = await this.auth.loginRecovery(dto.pendingToken, dto.code);
     this.setSession(res, sessionToken);
