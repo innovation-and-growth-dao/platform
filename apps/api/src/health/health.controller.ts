@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -34,6 +34,18 @@ export class HealthController {
       time: new Date().toISOString(),
       components,
     };
+  }
+
+  // SEC-08 — readiness (separate from liveness): 503 when a required dependency is down, so a
+  // broken instance can be pulled from rotation instead of silently serving errors.
+  @Get(['readyz', 'internal/readyz'])
+  async ready(): Promise<HealthReport> {
+    const [database, redis] = await Promise.all([this.checkDb(), this.checkRedis()]);
+    const components = { database, redis };
+    const allUp = Object.values(components).every((s) => s === 'up');
+    const report: HealthReport = { status: allUp ? 'ok' : 'degraded', service: 'drep-dao-api', time: new Date().toISOString(), components };
+    if (!allUp) throw new ServiceUnavailableException(report);
+    return report;
   }
 
   private async checkDb(): Promise<ComponentStatus> {

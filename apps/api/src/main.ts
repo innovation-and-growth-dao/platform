@@ -3,7 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
-import { json, urlencoded } from 'express';
+import { json, urlencoded, type Request, type Response, type NextFunction } from 'express';
 import { AppModule } from './app.module';
 
 // JSON.stringify can't serialize BigInt natively — endpoints returning raw
@@ -25,10 +25,22 @@ async function bootstrap() {
   // with a higher cap — profile photos are sent inline as ~512 KB data URLs.
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   const config = app.get(ConfigService);
+  // SEC-06 — behind exactly one reverse proxy (Caddy); makes req.ip the real client, not spoofable via x-forwarded-for.
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.set('trust proxy', 1);
+  expressApp.disable('x-powered-by');
 
   app.use(json({ limit: '2mb' }));
   app.use(urlencoded({ extended: true, limit: '2mb' }));
   app.use(cookieParser());
+  // SEC-08 — baseline security headers (HSTS is terminated at the TLS edge/Caddy).
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+    next();
+  });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
@@ -40,12 +52,20 @@ async function bootstrap() {
       { path: 'internal/healthz', method: RequestMethod.GET },
       { path: 'internal/metrics', method: RequestMethod.GET },
       { path: 'internal/deploy/readiness', method: RequestMethod.GET },
+      { path: 'readyz', method: RequestMethod.GET },
+      { path: 'internal/readyz', method: RequestMethod.GET },
     ],
   });
 
   const origins = (config.get<string>('CORS_ORIGINS') ?? 'http://localhost:3000')
     .split(',')
-    .map((o) => o.trim());
+    .map((o) => o.trim())
+    .filter(Boolean);
+  // SEC-08 — require an explicit CORS allowlist in production (credentialed CORS + '*' is unsafe).
+  const isProd = config.get<string>('NODE_ENV') === 'production' || config.get<string>('CARDANO_NETWORK') === 'Mainnet';
+  if (isProd && (origins.length === 0 || origins.includes('*'))) {
+    throw new Error('CORS_ORIGINS must be an explicit allowlist in production (no "*" or empty)');
+  }
   app.enableCors({ origin: origins, credentials: true });
 
   const port = Number(config.get('API_PORT') ?? 4000);

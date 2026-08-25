@@ -30,7 +30,8 @@ export class SysadminAuthController {
   ) {}
 
   private clientIp(req: Request): string | undefined {
-    return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+    // SEC-06 — trust the framework's req.ip (Express 'trust proxy' is configured to our edge in main.ts); do not read raw x-forwarded-for.
+    return req.ip;
   }
 
   @Post('login')

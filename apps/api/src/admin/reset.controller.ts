@@ -1,4 +1,5 @@
-import { Body, Controller, Post, UseGuards, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { IsString } from 'class-validator';
 import { AdminGuard } from './admin.guard';
 import { CurrentAdmin } from './current-admin.decorator';
@@ -22,10 +23,15 @@ export class ResetController {
   constructor(
     private readonly reset: ResetService,
     private readonly audit: AdminAuditService,
+    private readonly config: ConfigService,
   ) {}
 
   @Post()
   async run(@CurrentAdmin() admin: AdminIdentity, @Body() dto: ResetConfirmDto) {
+    // SEC-03 — never allow a destructive state wipe on mainnet.
+    if (this.config.get<string>('CARDANO_NETWORK') === 'Mainnet') {
+      throw new ForbiddenException('DAO reset is disabled on mainnet');
+    }
     if (dto.confirm !== 'RESET DAO STATE') {
       throw new BadRequestException('to confirm, send { "confirm": "RESET DAO STATE" }');
     }
