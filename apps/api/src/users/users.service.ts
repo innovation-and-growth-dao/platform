@@ -34,9 +34,28 @@ export class UsersService {
    * Records the wallet's CIP-95 DRep key hash (if provided) and, if present,
    * checks on-chain whether that DRep is registered + active (§22.4). */
   async upsertByStakeKey(params: { stakeKeyHash: string; stakeAddress: string; drepKeyHash?: string }) {
-    const drepKeyHash = params.drepKeyHash ?? undefined;
+    // SEC-01 (interim hardening) — a login proves control of the STAKE key only, not the supplied
+    // DRep key. Until a full DRep-key-ownership proof exists, the DRep binding is first-write-wins,
+    // immutable through normal login, and globally unique — so a caller can't claim another party's
+    // (e.g. a board seat's) public DRep key. A full cryptographic proof flow supersedes this.
+    const existing = await this.prisma.appUser.findUnique({ where: { stakeKeyHash: params.stakeKeyHash }, select: { drepKeyHash: true } });
+    let drepKeyHash = params.drepKeyHash ?? undefined;
+    if (drepKeyHash) {
+      if (existing?.drepKeyHash) {
+        drepKeyHash = undefined; // immutable: keep the already-bound key, ignore a different claim
+      } else {
+        const taken = await this.prisma.appUser.findFirst({ where: { drepKeyHash, NOT: { stakeKeyHash: params.stakeKeyHash } }, select: { id: true } });
+        if (taken) {
+          this.logger.warn(`refusing to bind DRep key hash already claimed by another account (stake ${params.stakeKeyHash.slice(0, 12)}…)`);
+          drepKeyHash = undefined;
+        }
+      }
+    }
     // undefined = couldn't determine (no key, or chain query failed) → preserve prior value.
-    const registered = drepKeyHash ? await this.checkOnchainRegistration(drepKeyHash) : undefined;
+    // Refresh registration for the effective key (existing binding or the just-bound key) so a member
+    // who registers their DRep on-chain after first login still gets drepRegistered updated.
+    const effectiveKey = existing?.drepKeyHash ?? drepKeyHash;
+    const registered = effectiveKey ? await this.checkOnchainRegistration(effectiveKey) : undefined;
     return this.prisma.appUser.upsert({
       where: { stakeKeyHash: params.stakeKeyHash },
       update: {
