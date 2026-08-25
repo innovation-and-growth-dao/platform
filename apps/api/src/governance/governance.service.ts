@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { decryptSecret, encryptSecret } from '../common/secret-cipher';
 import { PLATFORM_CONFIG_DEFAULTS, PLATFORM_CONFIG_META } from '@drep-dao/shared';
 import { Prisma } from '@drep-dao/db';
 import { PrismaService } from '../prisma/prisma.service';
@@ -61,11 +62,11 @@ export class GovernanceService {
   /** Current source order + which credentials are configured (values masked — never returned raw). */
   async getOnchainSource() {
     const orderRow = await this.prisma.platformConfig.findUnique({ where: { key: 'CARDANO_ONCHAIN_ORDER' } });
-    const bf = (await this.prisma.platformSecret.findUnique({ where: { key: 'BLOCKFROST_PROJECT_ID' } }))?.value?.trim()
+    const bf = decryptSecret((await this.prisma.platformSecret.findUnique({ where: { key: 'BLOCKFROST_PROJECT_ID' } }))?.value)?.trim()
       || process.env.BLOCKFROST_PROJECT_ID?.trim() || '';
-    const dbs = (await this.prisma.platformSecret.findUnique({ where: { key: 'DBSYNC_URL' } }))?.value?.trim()
+    const dbs = decryptSecret((await this.prisma.platformSecret.findUnique({ where: { key: 'DBSYNC_URL' } }))?.value)?.trim()
       || process.env.DBSYNC_URL?.trim() || '';
-    const kt = (await this.prisma.platformSecret.findUnique({ where: { key: 'KOIOS_API_TOKEN' } }))?.value?.trim()
+    const kt = decryptSecret((await this.prisma.platformSecret.findUnique({ where: { key: 'KOIOS_API_TOKEN' } }))?.value)?.trim()
       || process.env.KOIOS_API_TOKEN?.trim() || '';
     return {
       order: this.parseOrder(typeof orderRow?.value === 'string' ? orderRow.value : null),
@@ -125,10 +126,11 @@ export class GovernanceService {
       await this.prisma.platformSecret.deleteMany({ where: { key } });
       return;
     }
+    const encV = encryptSecret(v);
     await this.prisma.platformSecret.upsert({
       where: { key },
-      update: { value: v, updatedBy: userId },
-      create: { key, value: v, updatedBy: userId },
+      update: { value: encV, updatedBy: userId },
+      create: { key, value: encV, updatedBy: userId },
     });
   }
 }

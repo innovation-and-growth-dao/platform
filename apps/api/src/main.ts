@@ -5,6 +5,8 @@ import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
 import { json, urlencoded, type Request, type Response, type NextFunction } from 'express';
 import { AppModule } from './app.module';
+import { PrismaService } from './prisma/prisma.service';
+import { assertSecretKek, encryptSecret, isEncrypted } from './common/secret-cipher';
 
 // JSON.stringify can't serialize BigInt natively — endpoints returning raw
 // Prisma rows with BigInt columns (amounts in lovelace, etc.) used to 500.
@@ -67,6 +69,24 @@ async function bootstrap() {
     throw new Error('CORS_ORIGINS must be an explicit allowlist in production (no "*" or empty)');
   }
   app.enableCors({ origin: origins, credentials: true });
+
+  // SEC-02 — require a working secret KEK in production, then encrypt any legacy plaintext secrets at rest. Idempotent + backward-compatible.
+  assertSecretKek();
+  if (process.env.SECRET_ENC_KEY) {
+    try {
+      const prisma = app.get(PrismaService);
+      let n = 0;
+      for (const row of await prisma.platformSecret.findMany()) {
+        if (!isEncrypted(row.value)) { await prisma.platformSecret.update({ where: { key: row.key }, data: { value: encryptSecret(row.value) } }); n++; }
+      }
+      for (const t of await prisma.admin2fa.findMany()) {
+        if (!isEncrypted(t.totpSecret)) { await prisma.admin2fa.update({ where: { adminId: t.adminId }, data: { totpSecret: encryptSecret(t.totpSecret) } }); n++; }
+      }
+      if (n) Logger.log(`SEC-02: encrypted ${n} at-rest secret(s)`, 'Bootstrap');
+    } catch (e) {
+      Logger.warn(`SEC-02 secret migration skipped: ${e instanceof Error ? e.message : e}`, 'Bootstrap');
+    }
+  }
 
   const port = Number(config.get('API_PORT') ?? 4000);
   await app.listen(port);

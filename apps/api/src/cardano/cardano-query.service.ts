@@ -1,4 +1,5 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { decryptSecret } from '../common/secret-cipher';
 import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import { drepKeyHashFromId } from '@drep-dao/cardano';
@@ -120,9 +121,9 @@ export class CardanoQueryService {
         .split(',').map((s) => s.trim().toLowerCase())
         .filter((s) => s === 'koios' || s === 'blockfrost' || s === 'dbsync');
       if (parsed.length) this.order = [...new Set(parsed)];
-      this.koiosToken = kt?.value?.trim() || process.env.KOIOS_API_TOKEN?.trim() || '';
-      this.blockfrostKey = bf?.value?.trim() || process.env.BLOCKFROST_PROJECT_ID?.trim() || '';
-      this.dbsyncUrl = dbs?.value?.trim() || process.env.DBSYNC_URL?.trim() || '';
+      this.koiosToken = decryptSecret(kt?.value)?.trim() || process.env.KOIOS_API_TOKEN?.trim() || '';
+      this.blockfrostKey = decryptSecret(bf?.value)?.trim() || process.env.BLOCKFROST_PROJECT_ID?.trim() || '';
+      this.dbsyncUrl = decryptSecret(dbs?.value)?.trim() || process.env.DBSYNC_URL?.trim() || '';
     } catch {
       /* keep the last-known config on a transient DB hiccup */
     }

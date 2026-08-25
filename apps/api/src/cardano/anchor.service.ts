@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { decryptSecret, encryptSecret } from '../common/secret-cipher';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bip39 from 'bip39';
@@ -66,16 +67,17 @@ export class AnchorService implements OnModuleInit {
   async onModuleInit() {
     const row = await this.prisma.platformSecret.findUnique({ where: { key: 'ANCHOR_MNEMONIC' } });
     if (row?.value) {
-      this.mnemonic = row.value;
+      this.mnemonic = decryptSecret(row.value) ?? undefined;
       this.logger.log('anchor hot-wallet seed loaded from platform_secret');
       return;
     }
     if (this.mnemonic) return; // operator-provided via ANCHOR_MNEMONIC env — keep it.
     const fresh = bip39.generateMnemonic(256); // 24-word
+    const encFresh = encryptSecret(fresh);
     await this.prisma.platformSecret.upsert({
       where: { key: 'ANCHOR_MNEMONIC' },
-      update: { value: fresh },
-      create: { key: 'ANCHOR_MNEMONIC', value: fresh, updatedBy: null },
+      update: { value: encFresh },
+      create: { key: 'ANCHOR_MNEMONIC', value: encFresh, updatedBy: null },
     });
     this.mnemonic = fresh;
     this.logger.warn(`anchor hot wallet auto-generated → ${this.hotWalletAddress()} (needs funding)`);
@@ -190,10 +192,11 @@ export class AnchorService implements OnModuleInit {
       throw new BadRequestException('move the hot-wallet funds to the multisig (sweep) before exchanging the seed');
     }
     const fresh = bip39.generateMnemonic(256); // 24-word
+    const encFresh = encryptSecret(fresh);
     await this.prisma.platformSecret.upsert({
       where: { key: 'ANCHOR_MNEMONIC' },
-      update: { value: fresh, updatedBy: adminId ?? null },
-      create: { key: 'ANCHOR_MNEMONIC', value: fresh, updatedBy: adminId ?? null },
+      update: { value: encFresh, updatedBy: adminId ?? null },
+      create: { key: 'ANCHOR_MNEMONIC', value: encFresh, updatedBy: adminId ?? null },
     });
     this.mnemonic = fresh;
     this.logger.warn('anchor hot-wallet SEED rotated (admin)');

@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { decryptSecret, encryptSecret } from '../common/secret-cipher';
 import {
   BadRequestException,
   ConflictException,
@@ -72,7 +73,7 @@ export class AdminAuthService {
         passwordHash,
         status: AdminStatus.ACTIVE,
         createdById: params.createdById ?? null,
-        twoFa: { create: { totpSecret: totp.base32, enrolledAt: new Date(), required: required2fa } },
+        twoFa: { create: { totpSecret: encryptSecret(totp.base32), enrolledAt: new Date(), required: required2fa } },
         recoveryCodes: { create: recoveryHashes.map((codeHash) => ({ codeHash })) },
       },
     }).catch((e: unknown) => {
@@ -259,7 +260,7 @@ export class AdminAuthService {
     const adminId = await this.redis.client.getdel(`admin:pending2fa:${pendingToken}`);
     if (!adminId) throw new UnauthorizedException('2FA challenge expired — log in again');
     const twoFa = await this.prisma.admin2fa.findUnique({ where: { adminId } });
-    if (!twoFa || !verifyTotp(twoFa.totpSecret, code)) {
+    if (!twoFa || !verifyTotp(decryptSecret(twoFa.totpSecret) ?? '', code)) {
       throw new UnauthorizedException('invalid 2FA code');
     }
     return this.issueSession(adminId);
