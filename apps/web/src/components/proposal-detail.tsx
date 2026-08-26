@@ -39,6 +39,7 @@ import {
 import { BackButton, StatusBadge, PROPOSAL_STATUS_CLS, fmtDateTime, RationaleText, PowerBar, useNow, fmtCountdown } from './round-ui';
 import { Markdown, MarkdownEditor, MarkdownCollapseContext, ExpandIcon, ShrinkIcon } from './markdown';
 import { CopyButton } from './copy-button';
+import { ShareLinkButton } from './share-link-button';
 import { ConfirmDialog } from './confirm-dialog';
 import { RevenueSharingBlock } from './proposal-submit';
 import { ProposalMessagesPanel } from './proposal-messages';
@@ -121,7 +122,10 @@ export function ProposalDetail({
 
   return (
     <div className="space-y-4">
-      <BackBtn onBack={onBack} />
+      <div className="flex items-center justify-between gap-2">
+        <BackBtn onBack={onBack} />
+        <ShareLinkButton />
+      </div>
       <div className={card}>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <h2 className="text-lg font-semibold">

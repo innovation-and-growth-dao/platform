@@ -73,10 +73,13 @@ export function HomeShell() {
   const prevUserIdRef = useRef<string | null>(null);
   useEffect(() => {
     const id = profile?.user?.id ?? null;
-    if (prevUserIdRef.current !== id) {
-      prevUserIdRef.current = id;
+    const prev = prevUserIdRef.current;
+    // Clear only on a real switch/logout (prev was a signed-in user); NOT on the first anonymous→login
+    // transition — otherwise a shared ?proposal=/?ip= link would be dropped the moment the visitor logs in.
+    if (prev !== null && prev !== id) {
       setParams({ tab: null, round: null, proposal: null, ip: null });
     }
+    prevUserIdRef.current = id;
   }, [profile, setParams]);
 
   // §20 — left-nav My-area to-do badge. Computed for every render (even

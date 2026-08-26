@@ -23,6 +23,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 import { useExplorer } from '@/lib/explorer';
 import { useUrlNav } from '@/lib/use-url-nav';
+import { ShareLinkButton } from './share-link-button';
 import { BackButton, StatusBadge, PROPOSAL_STATUS_CLS, fmtDateTime, toLocalInput, DateField, RationaleText, useNow, fmtCountdown } from './round-ui';
 import { Markdown, MarkdownEditor } from './markdown';
 
@@ -879,7 +880,10 @@ function InternalDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
   return (
     <div className="space-y-4">
-      <BackBtn onBack={onBack} />
+      <div className="flex items-center justify-between gap-2">
+        <BackBtn onBack={onBack} />
+        <ShareLinkButton />
+      </div>
       {error ? <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div> : null}
       {p.status === 'ACTIVE' && expired ? (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
