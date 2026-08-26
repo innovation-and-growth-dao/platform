@@ -30,6 +30,9 @@ interface AuthState {
    *  TransactionWitnessSet which the platform combines with other board
    *  members' witnesses + the native script. Null if wallet unavailable. */
   signTx: (txBodyHex: string) => Promise<string | null>;
+  /** SEC-01 — prove control of the wallet's CIP-95 DRep key. Resolves with the refreshed profile;
+   *  throws on cancel; returns null if no DRep key/wallet. */
+  proveDrepKey: () => Promise<UserProfile | null>;
 }
 
 // Remember WHICH wallet the user logged in with, so signing after a page reload
@@ -140,6 +143,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return await api.signTx(txBodyHex, true);
   }, []);
 
+  // SEC-01 — challenge/response proof of DRep-key ownership.
+  const proveDrepKey = useCallback(async () => {
+    let api = walletApiRef.current;
+    if (!api) {
+      const key = walletKeyRef.current;
+      const entry = key ? listInjectedWallets().find((w) => w.key === key) : null;
+      if (!entry) return null;
+      api = (await getStakeAddress(entry)).api;
+      walletApiRef.current = api;
+    }
+    const drepKeyHex = await getDRepKeyHex(api);
+    if (!drepKeyHex) return null;
+    const { challenge, addressHex } = await authApi.drepChallenge(drepKeyHex);
+    const sig = await api.signData(addressHex, utf8ToHex(challenge));
+    const res = await authApi.drepVerify({ drepKeyHex, signature: sig.signature, key: sig.key });
+    setProfile(res.profile);
+    return res.profile;
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -153,6 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         detectDRepId: detect,
         signMessage,
         signTx,
+        proveDrepKey,
       }}
     >
       {children}

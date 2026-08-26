@@ -11,9 +11,10 @@ import {
 import type { Response } from 'express';
 import { drepKeyHashFromPubKeyHex, isStakeAddress, stakeKeyHashFromBech32 } from '@drep-dao/cardano';
 import { NonceService } from './nonce.service';
+import { DrepLinkService } from './drep-link.service';
 import { AuthService, SESSION_COOKIE } from './auth.service';
 import { UsersService } from '../users/users.service';
-import { NonceRequestDto, VerifyRequestDto } from './dto';
+import { DrepChallengeDto, DrepVerifyDto, NonceRequestDto, VerifyRequestDto } from './dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { CurrentUser, AuthContext } from './current-user.decorator';
@@ -24,6 +25,7 @@ export class AuthController {
     private readonly nonce: NonceService,
     private readonly auth: AuthService,
     private readonly users: UsersService,
+    private readonly drepLink: DrepLinkService,
   ) {}
 
   // POST /api/v1/auth/nonce → message for the wallet to sign
@@ -70,6 +72,29 @@ export class AuthController {
 
     const profile = await this.users.getProfile(user.id);
     return profile;
+  }
+
+  // POST /api/v1/auth/drep/challenge → SEC-01: issue a challenge to prove DRep-key ownership
+  @UseGuards(JwtAuthGuard)
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip' })
+  @Post('drep/challenge')
+  async drepChallenge(@CurrentUser() ctx: AuthContext, @Body() dto: DrepChallengeDto) {
+    return this.drepLink.issueChallenge(ctx.userId, ctx.stakeKeyHash, dto.drepKeyHex);
+  }
+
+  // POST /api/v1/auth/drep/verify → SEC-01: verify the DRep-key signature, record a proven binding
+  @UseGuards(JwtAuthGuard)
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip' })
+  @Post('drep/verify')
+  async drepVerify(@CurrentUser() ctx: AuthContext, @Body() dto: DrepVerifyDto) {
+    const result = await this.drepLink.verifyChallenge({
+      userId: ctx.userId,
+      drepKeyHex: dto.drepKeyHex,
+      signature: dto.signature,
+      key: dto.key,
+    });
+    const profile = await this.users.getProfile(ctx.userId);
+    return { ...result, profile };
   }
 
   // GET /api/v1/auth/me → current user, roles, DRep status

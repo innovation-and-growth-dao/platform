@@ -14,7 +14,7 @@ export interface UserProfile {
   submitterName: string | null;
   roles: string[];
   /** On-chain DRep identity — source of truth for the DREP role (verified at login). */
-  onchainDrep: { registered: boolean; drepId: string | null };
+  onchainDrep: { registered: boolean; drepId: string | null; proven?: boolean };
   /** DAO membership (admission) status — separate from on-chain registration. */
   daoMembership: { status: string; admittedAt: string | null } | null;
 }
@@ -58,6 +58,16 @@ export const authApi = {
 
   verify: (body: { stakeAddress: string; signature: string; key: string; drepKeyHex?: string }) =>
     request<UserProfile>('/auth/verify', { method: 'POST', body: JSON.stringify(body) }),
+  drepChallenge: (drepKeyHex: string) =>
+    request<{ challenge: string; addressHex: string }>('/auth/drep/challenge', {
+      method: 'POST',
+      body: JSON.stringify({ drepKeyHex }),
+    }),
+  drepVerify: (body: { drepKeyHex: string; signature: string; key: string }) =>
+    request<{ proven: boolean; drepKeyHash: string; profile: UserProfile }>('/auth/drep/verify', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   me: () => request<UserProfile>('/auth/me'),
 

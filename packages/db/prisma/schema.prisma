@@ -24,6 +24,8 @@ model AppUser {
   displayName  String?  @map("display_name")
   drepKeyHash  String?  @unique @map("drep_key_hash") // SEC-01: unique among non-null (one user per DRep key); Postgres allows many NULLs
   drepRegistered Boolean @default(false) @map("drep_registered") // verified on-chain (registered + active) at last login
+  drepKeyProvenAt      DateTime? @map("drep_key_proven_at") // SEC-01: when the DRep key was cryptographically proven (CIP-95 signData), null = unproven
+  drepKeyProofs        DrepKeyProof[]
   // §20 personal preferences: which block explorer this member's on-chain links use.
   explorerPref       String? @map("explorer_pref") // cardanoscan | cexplorer | adastat | custom
   explorerCustomTxUrl String? @map("explorer_custom_tx_url") // template with {hash} when explorerPref='custom'
@@ -56,6 +58,23 @@ model AppUser {
   decisionComments       DecisionComment[]
 
   @@map("app_user")
+}
+
+/// SEC-01 — append-only audit of DRep-key ownership proofs.
+model DrepKeyProof {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  drepKeyHash   String    @map("drep_key_hash")
+  challengeHash String    @map("challenge_hash")
+  signatureHex  String    @map("signature_hex")
+  method        String    @default("cip95-signdata-v1")
+  verifiedAt    DateTime  @default(now()) @map("verified_at")
+  revokedAt     DateTime? @map("revoked_at")
+  user          AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([drepKeyHash])
+  @@index([userId])
+  @@map("drep_key_proof")
 }
 
 // §2.1 — to submit proposals a user must hold an approved "submitter" role. They apply with a

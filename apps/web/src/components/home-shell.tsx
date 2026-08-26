@@ -7,6 +7,7 @@ import { useUrlNav } from '@/lib/use-url-nav';
 import { brand } from '@/lib/brand';
 import { NavIcon } from './nav-icons';
 import { ConnectWallet } from './connect-wallet';
+import { DrepVerifyPrompt } from './drep-verify-prompt';
 import { PublicLanding } from './public-landing';
 import { MemberArea } from './member-area';
 import { RoundsSection } from './rounds-section';
@@ -196,6 +197,7 @@ export function HomeShell() {
 
   return (
     <div className="flex flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
+      <DrepVerifyPrompt />
       {/* Left: title + menu only. */}
       <aside className="lg:w-56 lg:shrink-0">
         <h1 className="mb-3 text-xl font-bold tracking-tight lg:mb-4">{brand.name}</h1>

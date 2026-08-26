@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import { DrepVerifyControl } from './drep-verify-control';
 import { useT } from '@/lib/prefs-context';
 import type { Cip30WalletEntry } from '@/lib/cip30';
 
@@ -70,6 +71,7 @@ export function ConnectWallet() {
         {profile.onchainDrep.registered && profile.onchainDrep.drepId ? (
           <div className="break-all font-mono text-xs text-neutral-500">{profile.onchainDrep.drepId}</div>
         ) : null}
+        <DrepVerifyControl className="mt-1" />
         <button
           onClick={() => logout()}
           className="mt-1 rounded-md border border-neutral-300 px-3 py-1 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"

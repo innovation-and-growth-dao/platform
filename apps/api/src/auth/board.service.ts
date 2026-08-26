@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { isProvenDrepRequired } from './drep-link.service';
 
 /**
  * Single source of truth for "is this user an active board member?" (§17/§25.5):
@@ -8,11 +10,19 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 @Injectable()
 export class BoardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
 
   async isBoardMember(userId: string): Promise<boolean> {
-    const user = await this.prisma.appUser.findUnique({ where: { id: userId }, select: { drepKeyHash: true } });
+    const user = await this.prisma.appUser.findUnique({
+      where: { id: userId },
+      select: { drepKeyHash: true, drepKeyProvenAt: true },
+    });
     if (!user?.drepKeyHash) return false;
+    // SEC-01 — when enabled, only a cryptographically proven DRep binding grants board authority.
+    if (isProvenDrepRequired(this.config) && !user.drepKeyProvenAt) return false;
     const seat = await this.prisma.boardSeat.findFirst({ where: { removedAt: null, drepKeyHash: user.drepKeyHash } });
     return !!seat;
   }

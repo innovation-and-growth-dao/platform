@@ -205,3 +205,27 @@ export function drepIdFromKeyHashHex(keyHashHex: string): string {
 export function drepIdFromPubKeyHex(pubKeyHex: string): string {
   return drepIdFromKeyHashHex(drepKeyHashFromPubKeyHex(pubKeyHex));
 }
+
+/**
+ * SEC-01 — build the reward/stake-style address that a DRep key signs over when proving ownership
+ * of its governance credential via CIP-30 signData. The DRep key hash is placed in a stake-key
+ * credential envelope so a CIP-95 wallet that holds the DRep key can produce a COSE_Sign1 the
+ * backend can verify with the same credential-to-address check it already uses for stake logins.
+ * `network`: 1 = mainnet, 0 = testnet/preprod.
+ */
+function stakeCredBytesFromKeyHashHex(keyHashHex: string, network: number): number[] {
+  const hash = fromHex(keyHashHex.trim().toLowerCase());
+  if (hash.length !== 28) throw new Error(`expected a 28-byte key hash, got ${hash.length} bytes`);
+  return [0xe0 | (network & 0x0f), ...Array.from(hash)]; // 0b1110_000n — stake-key credential header
+}
+
+/** 29-byte hex form (for the CIP-30 signData `addressHex` argument). */
+export function stakeAddrHexFromKeyHashHex(keyHashHex: string, network: number): string {
+  return toHex(Uint8Array.from(stakeCredBytesFromKeyHashHex(keyHashHex, network)));
+}
+
+/** bech32 form (for backend @cardano-foundation/cardano-verify-datasignature). */
+export function stakeAddrBech32FromKeyHashHex(keyHashHex: string, network: number): string {
+  const hrp = (network & 0x0f) === 1 ? 'stake' : 'stake_test';
+  return bech32Encode(hrp, convertBits(stakeCredBytesFromKeyHashHex(keyHashHex, network), 8, 5, true));
+}

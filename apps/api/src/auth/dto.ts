@@ -32,3 +32,29 @@ export class VerifyRequestDto {
   @MaxLength(2000)
   drepKeyHex?: string;
 }
+
+/** SEC-01 — request a challenge to prove control of a DRep key. */
+export class DrepChallengeDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  drepKeyHex!: string;
+}
+
+/** SEC-01 — submit the DRep-key signature over the issued challenge. */
+export class DrepVerifyDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  drepKeyHex!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20000)
+  signature!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  key!: string;
+}

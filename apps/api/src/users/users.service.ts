@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Role, DRepStatus } from '@drep-dao/shared';
 import { drepIdFromKeyHashHex } from '@drep-dao/cardano';
 import { PrismaService } from '../prisma/prisma.service';
 import { CardanoQueryService } from '../cardano/cardano-query.service';
+import { isProvenDrepRequired } from '../auth/drep-link.service';
 
 export interface UserProfile {
   user: {
@@ -16,7 +18,7 @@ export interface UserProfile {
   submitterName: string | null;
   roles: Role[];
   /** On-chain DRep identity — the source of truth for the DREP role (§22.4). */
-  onchainDrep: { registered: boolean; drepId: string | null };
+  onchainDrep: { registered: boolean; drepId: string | null; proven?: boolean };
   /** DAO membership (admission) status — separate from on-chain registration. */
   daoMembership: { status: string; admittedAt: Date | null } | null;
 }
@@ -28,6 +30,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cardano: CardanoQueryService,
+    private readonly config: ConfigService,
   ) {}
 
   /** §22.1 — auto-create (or refresh) a user keyed by stake key hash on login.
@@ -39,7 +42,9 @@ export class UsersService {
     // immutable through normal login, and globally unique — so a caller can't claim another party's
     // (e.g. a board seat's) public DRep key. A full cryptographic proof flow supersedes this.
     const existing = await this.prisma.appUser.findUnique({ where: { stakeKeyHash: params.stakeKeyHash }, select: { drepKeyHash: true } });
-    let drepKeyHash = params.drepKeyHash ?? undefined;
+    // SEC-01 — when a cryptographic DRep proof is required, a plain login must NOT bind the
+    // client-supplied DRep key at all; binding happens only through /auth/drep/verify.
+    let drepKeyHash = isProvenDrepRequired(this.config) ? undefined : params.drepKeyHash ?? undefined;
     if (drepKeyHash) {
       if (existing?.drepKeyHash) {
         drepKeyHash = undefined; // immutable: keep the already-bound key, ignore a different claim
@@ -224,6 +229,7 @@ export class UsersService {
       onchainDrep: {
         registered: isRegisteredDRep,
         drepId: user.drepKeyHash ? safeDrepId(user.drepKeyHash) : null,
+        proven: !!user.drepKeyProvenAt,
       },
       daoMembership: drep ? { status: drep.status, admittedAt: drep.admittedAt } : null,
     };
