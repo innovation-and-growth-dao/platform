@@ -23,8 +23,15 @@ import {
 export const ADMIN_SESSION_COOKIE = 'admin_session';
 export const ADMIN_SESSION_TTL_HOURS = 4;
 export const MAX_ADMINS = 3;
-const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_WINDOW_MINUTES = 15;
+// SEC-06 — never hard-lock an account by username (an anonymous attacker who knows a username
+// could otherwise keep a real admin locked out). Instead: a broad per-IP failure ceiling stops a
+// single source, and a progressive per-(username, IP) backoff slows a persistent guesser without
+// ever affecting the legitimate admin signing in from a different IP.
+const IP_FAIL_CEILING = 20; // failures from ONE ip in the window → that ip is refused
+const BACKOFF_START = 5; // failures for a (username, ip) pair before backoff kicks in
+const BACKOFF_BASE_SEC = 2; // 2s, 4s, 8s … doubling per extra failure
+const BACKOFF_MAX_SEC = 300; // capped at 5 min
 
 export interface AdminIdentity {
   adminId: string;
@@ -311,16 +318,32 @@ export class AdminAuthService {
   }
 
   private async assertNotLockedOut(username: string, ip?: string): Promise<void> {
-    const since = new Date(Date.now() - LOCKOUT_WINDOW_MINUTES * 60 * 1000);
-    const fails = await this.prisma.adminLoginAttempt.count({
-      where: {
-        success: false,
-        attemptedAt: { gte: since },
-        OR: [{ username }, ...(ip ? [{ ip }] : [])],
-      },
+    const now = Date.now();
+    const ipAddr = ip ?? '0.0.0.0';
+    const since = new Date(now - LOCKOUT_WINDOW_MINUTES * 60 * 1000);
+
+    const ipFails = await this.prisma.adminLoginAttempt.count({
+      where: { success: false, ip: ipAddr, attemptedAt: { gte: since } },
     });
-    if (fails >= LOCKOUT_THRESHOLD) {
-      throw new UnauthorizedException(`too many attempts — locked out for ${LOCKOUT_WINDOW_MINUTES} minutes`);
+    if (ipFails >= IP_FAIL_CEILING) {
+      throw new UnauthorizedException('too many failed attempts from your network — try again later');
+    }
+
+    const pairFails = await this.prisma.adminLoginAttempt.count({
+      where: { success: false, username, ip: ipAddr, attemptedAt: { gte: since } },
+    });
+    if (pairFails >= BACKOFF_START) {
+      const last = await this.prisma.adminLoginAttempt.findFirst({
+        where: { success: false, username, ip: ipAddr },
+        orderBy: { attemptedAt: 'desc' },
+        select: { attemptedAt: true },
+      });
+      const delaySec = Math.min(BACKOFF_MAX_SEC, BACKOFF_BASE_SEC * 2 ** (pairFails - BACKOFF_START));
+      const readyAt = (last?.attemptedAt.getTime() ?? 0) + delaySec * 1000;
+      const waitSec = Math.ceil((readyAt - now) / 1000);
+      if (waitSec > 0) {
+        throw new UnauthorizedException(`too many attempts — wait ${waitSec}s before trying again`);
+      }
     }
   }
 

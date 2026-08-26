@@ -36,10 +36,10 @@ export class SysadminAuthController {
   }
 
   @Post('login')
-  @RateLimit(
-    { points: 5, durationSec: 900, by: 'accountBody', failClosed: true },
-    { points: 30, durationSec: 60, by: 'ip', failClosed: true },
-  )
+  // SEC-06 — no per-username limit here (an anon attacker could weaponize it to lock a real admin);
+  // account safety is the progressive per-(username, ip) backoff in AdminAuthService. Keep a broad
+  // per-IP ceiling to blunt a single-source brute force.
+  @RateLimit({ points: 30, durationSec: 60, by: 'ip', failClosed: true })
   async login(@Body() dto: AdminLoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const ip = this.clientIp(req);
     const result = await this.auth.login(dto.username, dto.password, ip);
