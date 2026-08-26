@@ -16,6 +16,8 @@ export function WalletPanel() {
   const [error, setError] = useState<string | null>(null);
   const [confirmSweep, setConfirmSweep] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
+  const [sweepHours, setSweepHours] = useState<number>(24);
+  useEffect(() => { if (w) setSweepHours(w.anchorSweepHours); }, [w?.anchorSweepHours]);
 
   const load = useCallback(() => {
     adminApi.wallet().then(setW).catch((e) => setError(e instanceof Error ? e.message : 'failed'));
@@ -99,6 +101,21 @@ export function WalletPanel() {
               {busy === 'rotate' ? 'Exchanging…' : '2. Exchange the seed'}
             </button>
             <span className="text-xs text-slate-500">{swept ? 'Hot wallet is empty — seed can be exchanged.' : 'Sweep before exchanging the seed.'}</span>
+          </div>
+
+          {/* §24 — on-chain anchoring cadence + force-now (no board needed). */}
+          <div className="mt-4 border-t border-slate-800 pt-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">On-chain anchoring</h3>
+            <p className="mt-1 text-xs text-slate-400">
+              Decided proposals &amp; decisions are recorded on-chain. <strong>{w.pendingAnchors}</strong> pending — submitted automatically every {w.anchorSweepHours}h (needs a funded hot wallet), or force it now.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+              <label className="flex items-center gap-1 text-xs text-slate-400">Every
+                <input type="number" min={1} max={168} value={sweepHours} onChange={(e) => setSweepHours(Math.max(1, Math.min(168, Number(e.target.value) || 1)))} className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" /> hours
+              </label>
+              <button disabled={busy !== null} onClick={() => run('anchor-config', async () => `Anchor interval set to ${(await adminApi.setAnchorConfig(sweepHours)).sweepHours}h`)} className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-40">{busy === 'anchor-config' ? 'Saving…' : 'Save interval'}</button>
+              <button disabled={busy !== null || w.pendingAnchors === 0} onClick={() => run('submit-anchors', async () => { const r = await adminApi.submitAnchors(); return r.submitted ? `Submitted ${r.submitted}/${r.total} on-chain${r.failed ? `, ${r.failed} still pending` : ''}` : (r.reason ?? 'Nothing submitted — check the hot-wallet balance.'); })} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-40">{busy === 'submit-anchors' ? 'Submitting…' : `Submit ${w.pendingAnchors} now`}</button>
+            </div>
           </div>
         </>
       )}

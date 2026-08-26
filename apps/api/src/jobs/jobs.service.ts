@@ -107,7 +107,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     // §9.2 — resolve quick polls whose window ended (extend / resolve / fail).
     await this.quickPolls.resolveDue();
     // §24 — sweep up any anchors that were recorded but not submitted on-chain (see retryPendingAnchors).
-    await this.retryPendingAnchors().catch((e) => this.logger.warn(`anchor retry: ${e instanceof Error ? e.message : e}`));
+    await this.anchorSweepIfDue().catch((e) => this.logger.warn(`anchor sweep: ${e instanceof Error ? e.message : e}`));
     // §27 voting-deadline-check — stage windows that ended without auto-advance.
     if (this.rounds) {
       for (const o of await this.rounds.listOverdueStages()) {
@@ -155,6 +155,17 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
    * button — which chains each tx's change into the next — so every decision ends up anchored
    * within a tick, without anyone clicking. No-op when nothing is pending or no hot wallet is set.
    */
+  private async anchorSweepIfDue() {
+    const hours = await this.anchor.getSweepHours();
+    const key = 'JOB_LAST_RUN:anchor_sweep';
+    const row = await this.prisma.platformConfig.findUnique({ where: { key } });
+    const last = row ? Number(row.value) : 0;
+    if (Number.isFinite(last) && last > 0 && Date.now() - last < hours * 3_600_000) return;
+    await this.retryPendingAnchors();
+    const now = String(Date.now());
+    await this.prisma.platformConfig.upsert({ where: { key }, update: { value: now }, create: { key, value: now } });
+  }
+
   async retryPendingAnchors() {
     if (this.anchorSweepRunning) return; // a previous sweep is still draining the queue
     if (!this.anchor.walletConfigured()) return; // leave pending for manual submission

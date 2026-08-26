@@ -117,6 +117,22 @@ export class AnchorService implements OnModuleInit {
    * The hot wallet's signing key is an operator secret (env/KMS), never exposed
    * here — the board sees the address + balance for oversight.
    */
+  private readonly DEFAULT_SWEEP_HOURS = 24;
+  async getSweepHours(): Promise<number> {
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: 'ANCHOR_SWEEP_HOURS' } });
+    const h = row ? Number(row.value) : this.DEFAULT_SWEEP_HOURS;
+    return Number.isFinite(h) && h >= 1 && h <= 168 ? h : this.DEFAULT_SWEEP_HOURS;
+  }
+  async setSweepHours(hours: number): Promise<number> {
+    const h = Math.round(hours);
+    if (!Number.isFinite(h) || h < 1 || h > 168) throw new BadRequestException('anchor interval must be between 1 and 168 hours');
+    await this.prisma.platformConfig.upsert({ where: { key: 'ANCHOR_SWEEP_HOURS' }, update: { value: String(h) }, create: { key: 'ANCHOR_SWEEP_HOURS', value: String(h) } });
+    return h;
+  }
+  async pendingAnchorCount(): Promise<number> {
+    return this.prisma.anchor.count({ where: { txHash: null } });
+  }
+
   async walletStatus() {
     const hot = this.hotWalletAddress();
     const envTreasury = this.treasuryAddress ?? null;
@@ -143,6 +159,8 @@ export class AnchorService implements OnModuleInit {
             totalKeys: active.totalKeys,
           }
         : null,
+      anchorSweepHours: await this.getSweepHours(),
+      pendingAnchors: await this.pendingAnchorCount(),
     };
   }
 

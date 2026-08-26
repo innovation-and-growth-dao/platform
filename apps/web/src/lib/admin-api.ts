@@ -51,6 +51,8 @@ export interface AdminWalletStatus {
    *  have submitted their signing keys and the script is derived. Once set,
    *  this is the platform's actual on-chain treasury home. */
   activeMultisig: { address: string; balanceAda: number; threshold: number; totalKeys: number } | null;
+  anchorSweepHours: number;
+  pendingAnchors: number;
 }
 
 export interface GenesisState {
@@ -153,6 +155,10 @@ export const adminApi = {
     disable: () => request<MaintenanceState>('/maintenance/disable', { method: 'POST' }),
   },
   wallet: () => request<AdminWalletStatus>('/wallet'),
+  setAnchorConfig: (sweepHours: number) =>
+    request<{ sweepHours: number }>('/wallet/anchor-config', { method: 'PATCH', body: JSON.stringify({ sweepHours }) }),
+  submitAnchors: () =>
+    request<{ submitted: number; failed: number; total: number; reason?: string }>('/wallet/submit-anchors', { method: 'POST' }),
   sweepWallet: () => request<{ txHash: string; to: string }>('/wallet/sweep', { method: 'POST' }),
   rotateSeed: () => request<{ address: string | null }>('/wallet/rotate-seed', { method: 'POST' }),
   /** §23 — destructive wipe of DAO state (proposals/board/multisig/etc.).
