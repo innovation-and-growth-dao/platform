@@ -1,5 +1,6 @@
 import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { AdminGuard } from './admin.guard';
+import { StepUpGuard } from './step-up.guard';
 import { CurrentAdmin } from './current-admin.decorator';
 import type { AdminIdentity } from './admin-auth.service';
 import { AdminAuditService } from './admin-audit.service';
@@ -23,6 +24,7 @@ export class SysadminWalletController {
   }
 
   // Sweep ALL hot-wallet funds to the treasury (multisig).
+  @UseGuards(StepUpGuard)
   @Post('sweep')
   async sweep(@CurrentAdmin() admin: AdminIdentity) {
     const r = await this.anchor.sweepToMultisig();
@@ -31,6 +33,7 @@ export class SysadminWalletController {
   }
 
   // Exchange the hot-wallet seed (only allowed once swept). New address funded afresh.
+  @UseGuards(StepUpGuard)
   @Post('rotate-seed')
   async rotate(@CurrentAdmin() admin: AdminIdentity) {
     const r = await this.anchor.rotateSeed(admin.adminId);

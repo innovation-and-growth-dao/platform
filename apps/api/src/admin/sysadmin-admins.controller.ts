@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { AdminAuthService, type AdminIdentity } from './admin-auth.service';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminGuard } from './admin.guard';
+import { StepUpGuard } from './step-up.guard';
 import { CurrentAdmin } from './current-admin.decorator';
 import { AcceptInviteDto, AdminInviteDto } from './dto';
 
@@ -14,7 +15,7 @@ export class SysadminAdminsController {
     private readonly audit: AdminAuditService,
   ) {}
 
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminGuard, StepUpGuard)
   @Post('invite')
   async invite(@CurrentAdmin() admin: AdminIdentity, @Body() dto: AdminInviteDto) {
     const { token, expiresAt } = await this.auth.createInvitation(admin.adminId, dto.username, dto.email);
@@ -40,7 +41,7 @@ export class SysadminAdminsController {
     };
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminGuard, StepUpGuard)
   @Post(':id/remove')
   async remove(@CurrentAdmin() admin: AdminIdentity, @Param('id', ParseUUIDPipe) id: string) {
     await this.auth.removeAdmin(id);
@@ -48,7 +49,7 @@ export class SysadminAdminsController {
     return { ok: true };
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminGuard, StepUpGuard)
   @Post(':id/disable')
   async disable(@CurrentAdmin() admin: AdminIdentity, @Param('id', ParseUUIDPipe) id: string) {
     await this.auth.disableAdmin(id);
@@ -57,7 +58,7 @@ export class SysadminAdminsController {
   }
 
   /** §18.8 — generate a one-time password-reset token for another admin (1h TTL, shown once). */
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminGuard, StepUpGuard)
   @Post(':id/password-reset')
   async passwordReset(@CurrentAdmin() admin: AdminIdentity, @Param('id', ParseUUIDPipe) id: string) {
     const r = await this.auth.createPasswordReset(admin.adminId, id);
@@ -74,7 +75,7 @@ export class SysadminAdminsController {
   }
 
   /** §18.6 — switch ALL admins: invite the new roster; old roster auto-disabled when the last invite is accepted. */
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminGuard, StepUpGuard)
   @Post('switch-all')
   async switchAll(@CurrentAdmin() admin: AdminIdentity, @Body() dto: { admins: { username: string; email: string }[] }) {
     const r = await this.auth.switchAllAdmins(admin.adminId, dto.admins ?? []);

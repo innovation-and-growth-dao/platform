@@ -290,6 +290,65 @@ export class AdminAuthService {
   }
 
   /** Validate an admin_session cookie. Returns identity or null. */
+  /** SEC-03 — disable 2FA for an admin (removes the secret + recovery codes). Gated by step-up at
+   *  the controller, so a fresh TOTP code is required — a hijacked session can't strip 2FA. Used to
+   *  re-enroll (e.g. to regenerate lost recovery codes). */
+  async disableTwoFa(adminId: string): Promise<{ disabled: true }> {
+    await this.prisma.$transaction([
+      this.prisma.adminRecoveryCode.deleteMany({ where: { adminId } }),
+      this.prisma.admin2fa.deleteMany({ where: { adminId } }),
+    ]);
+    return { disabled: true };
+  }
+
+  /** SEC-03 — has this admin enrolled 2FA? (drives the "Enable 2FA" UI + step-up availability). */
+  async adminHasTwoFa(adminId: string): Promise<boolean> {
+    return (await this.prisma.admin2fa.count({ where: { adminId } })) > 0;
+  }
+
+  /** SEC-03 — self-service 2FA: generate a secret + recovery codes for a logged-in admin who has
+   *  none. Held PENDING in Redis (10 min) and only persisted once the admin confirms a code, so a
+   *  half-finished setup never enrolls a secret the admin can't reproduce. */
+  async beginTwoFaSetup(adminId: string, username: string) {
+    if (await this.adminHasTwoFa(adminId)) {
+      throw new ConflictException('two-factor authentication is already enabled');
+    }
+    const totp = newTotpSecret(username);
+    const recoveryCodes = generateRecoveryCodes();
+    await this.redis.client.set(
+      `admin:2fasetup:${adminId}`,
+      JSON.stringify({ base32: totp.base32, recoveryCodes }),
+      'EX',
+      600,
+    );
+    const totpQrDataUrl = await QRCode.toDataURL(totp.uri);
+    return { totpUri: totp.uri, totpBase32: totp.base32, totpQrDataUrl, recoveryCodes };
+  }
+
+  /** SEC-03 — confirm a code against the pending setup and persist it (secret encrypted at rest,
+   *  recovery codes hashed). `required` follows the network policy (mandatory on mainnet). */
+  async enableTwoFa(adminId: string, code: string): Promise<{ enabled: true }> {
+    if (await this.adminHasTwoFa(adminId)) {
+      throw new ConflictException('two-factor authentication is already enabled');
+    }
+    const raw = await this.redis.client.getdel(`admin:2fasetup:${adminId}`);
+    if (!raw) throw new BadRequestException('no pending 2FA setup — start again');
+    const pending = JSON.parse(raw) as { base32: string; recoveryCodes: string[] };
+    if (!verifyTotp(pending.base32, code)) {
+      // put it back so a single typo doesn't force restarting the whole setup
+      await this.redis.client.set(`admin:2fasetup:${adminId}`, raw, 'EX', 600);
+      throw new UnauthorizedException('that 2FA code is not valid');
+    }
+    const recoveryHashes = await Promise.all(pending.recoveryCodes.map((c) => hashSecret(c)));
+    await this.prisma.$transaction([
+      this.prisma.admin2fa.create({
+        data: { adminId, totpSecret: encryptSecret(pending.base32), enrolledAt: new Date(), required: this.requires2fa() },
+      }),
+      this.prisma.adminRecoveryCode.createMany({ data: recoveryHashes.map((codeHash) => ({ adminId, codeHash })) }),
+    ]);
+    return { enabled: true };
+  }
+
   async verifySession(sessionToken: string): Promise<AdminIdentity | null> {
     const session = await this.prisma.adminSession.findUnique({
       where: { id: sessionToken },

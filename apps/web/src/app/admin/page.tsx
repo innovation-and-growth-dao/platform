@@ -10,6 +10,8 @@ import { WalletPanel } from '@/components/admin/wallet-panel';
 import { ResetPanel } from '@/components/admin/reset-panel';
 import { MaintenancePanel } from '@/components/admin/maintenance-panel';
 import { fmtDateTime } from '@/components/round-ui';
+import { StepUpProvider } from '@/components/admin/step-up-provider';
+import { Enable2FA } from '@/components/admin/enable-2fa';
 
 export default function AdminDashboard() {
   const { admin, loading, logout } = useAdminAuth();
@@ -20,6 +22,7 @@ export default function AdminDashboard() {
   // re-mount + re-fetch (otherwise they keep showing pre-reset state until
   // the user hard-refreshes the page).
   const [resetGen, setResetGen] = useState(0);
+  const [twoFaEnabled, setTwoFaEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!loading && !admin) router.replace('/admin/login');
@@ -28,6 +31,7 @@ export default function AdminDashboard() {
   const refreshOverview = useCallback(() => {
     adminApi.health().then(setHealth).catch(() => undefined);
     adminApi.auditLog().then(setAudit).catch(() => undefined);
+    adminApi.me().then((m) => setTwoFaEnabled(!!m.twoFaEnabled)).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -42,6 +46,7 @@ export default function AdminDashboard() {
   const dot = (s: string) => (s === 'up' ? 'text-emerald-400' : 'text-red-400');
 
   return (
+    <StepUpProvider>
     <div className="space-y-6">
       <header className="flex items-center justify-between">
         <div>
@@ -57,6 +62,9 @@ export default function AdminDashboard() {
           Log out
         </button>
       </header>
+
+      {twoFaEnabled === false ? <Enable2FA onEnabled={refreshOverview} /> : null}
+      {twoFaEnabled === true ? <TwoFaEnabledPanel onDisabled={refreshOverview} /> : null}
 
       <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Overview</h2>
@@ -99,8 +107,43 @@ export default function AdminDashboard() {
         </ul>
       </section>
     </div>
+    </StepUpProvider>
   );
 }
+
+function TwoFaEnabledPanel({ onDisabled }: { onDisabled: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const disable = async () => {
+    setErr(null);
+    setBusy(true);
+    try {
+      await adminApi.twoFa.disable(); // triggers the step-up prompt for a fresh code
+      onDisabled();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not disable 2FA.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
+      <h2 className="text-sm font-semibold text-slate-300">Two-factor authentication is enabled</h2>
+      <p className="mt-1 text-sm text-slate-400">
+        Disable it (needs a current code) to re-enroll — e.g. to get fresh recovery codes or move to a new device.
+      </p>
+      <button
+        onClick={disable}
+        disabled={busy}
+        className="mt-3 rounded-md border border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
+      >
+        {busy ? 'Disabling…' : 'Disable 2FA'}
+      </button>
+      {err ? <p className="mt-2 text-sm text-rose-400">{err}</p> : null}
+    </section>
+  );
+}
+
 
 function Stat({ label, value, cls }: { label: string; value: string; cls?: string }) {
   return (

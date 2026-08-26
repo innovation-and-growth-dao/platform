@@ -2,6 +2,7 @@ import { Body, Controller, Post, UseGuards, BadRequestException, ForbiddenExcept
 import { ConfigService } from '@nestjs/config';
 import { IsString } from 'class-validator';
 import { AdminGuard } from './admin.guard';
+import { StepUpGuard } from './step-up.guard';
 import { CurrentAdmin } from './current-admin.decorator';
 import type { AdminIdentity } from './admin-auth.service';
 import { AdminAuditService } from './admin-audit.service';
@@ -26,6 +27,7 @@ export class ResetController {
     private readonly config: ConfigService,
   ) {}
 
+  @UseGuards(StepUpGuard)
   @Post()
   async run(@CurrentAdmin() admin: AdminIdentity, @Body() dto: ResetConfirmDto) {
     // SEC-03 — never allow a destructive state wipe on mainnet.

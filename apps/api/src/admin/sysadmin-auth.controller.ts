@@ -8,8 +8,9 @@ import {
 } from './admin-auth.service';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminGuard } from './admin.guard';
+import { StepUpGuard } from './step-up.guard';
 import { CurrentAdmin } from './current-admin.decorator';
-import { Admin2faDto, AdminLoginDto } from './dto';
+import { Admin2faDto, AdminLoginDto, TwoFaCodeDto } from './dto';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 
 function adminCookieOptions(secure: boolean) {
@@ -81,8 +82,31 @@ export class SysadminAuthController {
 
   @UseGuards(AdminGuard)
   @Get('me')
-  me(@CurrentAdmin() admin: AdminIdentity) {
-    return admin;
+  async me(@CurrentAdmin() admin: AdminIdentity) {
+    return { ...admin, twoFaEnabled: await this.auth.adminHasTwoFa(admin.adminId) };
+  }
+
+  // SEC-03 — self-service 2FA enrollment (needed for step-up on privileged actions).
+  @UseGuards(AdminGuard)
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip' })
+  @Post('2fa/setup')
+  twoFaSetup(@CurrentAdmin() admin: AdminIdentity) {
+    return this.auth.beginTwoFaSetup(admin.adminId, admin.username);
+  }
+
+  @UseGuards(AdminGuard)
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip' })
+  @Post('2fa/enable')
+  twoFaEnable(@CurrentAdmin() admin: AdminIdentity, @Body() dto: TwoFaCodeDto) {
+    return this.auth.enableTwoFa(admin.adminId, dto.code);
+  }
+
+  // SEC-03 — disabling 2FA is itself step-up-gated (needs a fresh code), so a stolen session can't remove it.
+  @UseGuards(AdminGuard, StepUpGuard)
+  @RateLimit({ points: 10, durationSec: 60, by: 'ip' })
+  @Post('2fa/disable')
+  twoFaDisable(@CurrentAdmin() admin: AdminIdentity) {
+    return this.auth.disableTwoFa(admin.adminId);
   }
 
   private setSession(res: Response, token: string) {

@@ -34,3 +34,8 @@ export class AcceptInviteDto {
   @IsString() @IsNotEmpty() @MaxLength(200) token!: string;
   @IsString() @IsNotEmpty() @MaxLength(200) password!: string;
 }
+
+/** SEC-03 — confirm a self-service 2FA enrollment (or step-up). */
+export class TwoFaCodeDto {
+  @IsString() @IsNotEmpty() @MaxLength(20) code!: string;
+}
