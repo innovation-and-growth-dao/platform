@@ -1146,6 +1146,12 @@ export interface MilestoneSegment {
   paidInTx: string | null;
 }
 export interface ProposalDetail extends ProposalSummary {
+  // §2 — submitter identity + contact (same data as the public submitters directory).
+  submitterUserId: string;
+  submitterAvatar: string | null;
+  submitterEmail: string | null;
+  submitterTelegram: string | null;
+  submitterSocialLinks: string[];
   categoryId: string;
   contentMd: string;
   costBreakdownMd: string | null;

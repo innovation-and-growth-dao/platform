@@ -6,6 +6,8 @@ import { card } from '@/lib/ui';
 import { DEFAULT_SUBCATEGORIES, canCommentOnProposal, commentAuthorTone } from '@drep-dao/shared';
 import { useAuth } from '@/lib/auth-context';
 import { useExplorer } from '@/lib/explorer';
+import { useUrlNav } from '@/lib/use-url-nav';
+import { FallbackAvatar } from './fallback-avatar';
 import {
   proposalsApi,
   proposalVersionsApi,
@@ -74,6 +76,7 @@ export function ProposalDetail({
   initialEditing?: boolean;
 }) {
   const tr = useT();
+  const { setParams } = useUrlNav();
   const { profile } = useAuth();
   const isBoard = profile?.roles.includes('BOARD') ?? false;
   const [p, setP] = useState<PDetail | null>(null);
@@ -161,6 +164,24 @@ export function ProposalDetail({
           {/* §3 — when the proposer submitted it (set on submit; null while still a private draft). */}
           {p.submittedAt ? <> · {tr('submitted')} {fmtDateTime(p.submittedAt)}</> : null}
         </div>
+        {/* §2 — submitter identity + contact: avatar + name (click → their profile) and how to reach
+            them. Same data the public submitters directory shows. */}
+        {p.submitter ? (
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-neutral-200 bg-neutral-50/60 px-2.5 py-1.5 text-xs dark:border-neutral-800 dark:bg-neutral-900/40">
+            <button onClick={() => setParams({ view: 'submitters', sub: p.submitterUserId })} className="flex items-center gap-2 text-left">
+              {p.submitterAvatar
+                ? <img src={p.submitterAvatar} alt="" className="h-7 w-7 rounded object-cover" />
+                : <FallbackAvatar name={p.submitter} className="h-7 w-7 rounded" />}
+              <span className="font-medium text-emerald-700 hover:underline dark:text-emerald-400">{p.submitter}</span>
+              <span className="text-neutral-400">{tr('view profile →')}</span>
+            </button>
+            {p.submitterEmail ? <span className="text-neutral-600 dark:text-neutral-400">{tr('Email:')} <a href={`mailto:${p.submitterEmail}`} className="text-emerald-700 underline dark:text-emerald-400">{p.submitterEmail}</a></span> : null}
+            {p.submitterTelegram ? <span className="text-neutral-600 dark:text-neutral-400">{tr('Telegram:')} <span className="font-mono">{p.submitterTelegram}</span></span> : null}
+            {p.submitterSocialLinks?.length ? (
+              <span className="flex flex-wrap items-center gap-x-2 text-neutral-600 dark:text-neutral-400">{tr('Links:')} {p.submitterSocialLinks.map((l, i) => <a key={i} href={/^https?:\/\//i.test(l) ? l : `https://${l}`} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">{l}</a>)}</span>
+            ) : null}
+          </div>
+        ) : null}
         {/* §3.5 — board can message the submitter at any stage (jumps to the thread list below). */}
         {isBoard ? (
           <button

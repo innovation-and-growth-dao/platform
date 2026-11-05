@@ -35,6 +35,14 @@ export function SubmittersDirectory() {
   useEffect(() => {
     submitterApi.pendingCount().then(setPending).catch(() => setPending(null));
   }, []);
+  // Deep-link: ?sub=<submitter account id> (e.g. from a proposal) auto-opens that profile.
+  const { get } = useUrlNav();
+  const sub = get('sub');
+  useEffect(() => {
+    if (!sub || !rows) return;
+    const row = rows.find((s) => s.userId === sub);
+    if (row) setOpenId(row.id);
+  }, [sub, rows]);
 
   return (
     <div className="space-y-4">

@@ -1825,7 +1825,7 @@ export class ProposalsService {
         include: {
           milestones: { orderBy: { idx: 'asc' } },
           category: { select: { name: true, minAda: true, maxAda: true, conditions: true } },
-          submitterUser: { select: { displayName: true } },
+          submitterUser: { select: { displayName: true, submitterApplication: { select: { logoDataUrl: true, email: true, telegram: true, socialLinks: true } } } },
           submitterDrep: { select: { drepIdOnchain: true } },
           round: { select: { status: true, filterResubmissionsAllowed: true, filterBudgetChangesAllowed: true, milestoneApprovalVotes: true, ignoreBudgetChange: true } },
         },
@@ -1867,9 +1867,17 @@ export class ProposalsService {
           txHash: docAnchor.txHash,
         }
       : null;
+    const subApp = p.submitterUser?.submitterApplication ?? null;
     return {
       contentFingerprint,
       ...this.summary(p),
+      // §2 — submitter identity + contact so a reader can reach them from the proposal (same data
+      // the public submitters directory already shows).
+      submitterUserId: p.submitterUserId,
+      submitterAvatar: subApp?.logoDataUrl ?? null,
+      submitterEmail: subApp?.email || null,
+      submitterTelegram: subApp?.telegram || null,
+      submitterSocialLinks: subApp?.socialLinks ?? [],
       milestoneBar,
       categoryId: p.categoryId,
       contentMd: p.contentMd,
