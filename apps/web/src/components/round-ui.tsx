@@ -43,15 +43,18 @@ export const PROPOSAL_STATUS_CLS: Record<string, string> = {
   COMPLETE: 'bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100',
   FAILED: 'bg-red-200 text-red-900 dark:bg-red-900 dark:text-red-100',
   DRAFT: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+  DELETED: 'bg-neutral-200 text-neutral-500 line-through dark:bg-neutral-800 dark:text-neutral-400',
+  // §30 — "document for public comment": published for comment, not yet a vote.
+  COMMENT: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200',
 };
 // Order proposal-status chips consistently. The backend (both the round detail and the rounds
 // list) sends counts for every status, including DRAFT/PENDING.
 const STATUS_ORDER = ['DRAFT', 'PENDING', 'ACTIVE', 'APPROVED', 'REJECTED', 'COMPLETE', 'FAILED'];
 
-export function StatusBadge({ status, cls }: { status: string; cls?: Record<string, string> }) {
+export function StatusBadge({ status, cls, labels }: { status: string; cls?: Record<string, string>; labels?: Record<string, string> }) {
   const t = useT();
   const map = cls ?? ROUND_STATUS_CLS;
-  return <span className={`rounded px-2 py-0.5 text-xs ${map[status] ?? 'bg-neutral-200 text-neutral-700'}`}>{t(status)}</span>;
+  return <span className={`rounded px-2 py-0.5 text-xs ${map[status] ?? 'bg-neutral-200 text-neutral-700'}`}>{t(labels?.[status] ?? status)}</span>;
 }
 
 /**
@@ -132,11 +135,11 @@ export function toLocalInput(iso: string | null | undefined): string {
 export function RationaleText({ text }: { text: string | null | undefined }) {
   const t = useT();
   const trimmed = (text ?? '').trim();
-  const long = trimmed.length > 50 || trimmed.includes('\n');
-  const [open, setOpen] = useState(!long);
+  // Always collapsed by default so a long rationale never dominates the list; the reader opts in.
+  const [open, setOpen] = useState(false);
   if (!trimmed) return null;
   return (
-    <div className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+    <div className="mt-1 text-xs">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -144,7 +147,10 @@ export function RationaleText({ text }: { text: string | null | undefined }) {
       >
         {open ? t('▾ rationale (hide)') : `▸ ${t('rationale')} (${trimmed.length} char${trimmed.length === 1 ? '' : 's'} — ${t('show')})`}
       </button>
-      {open ? <div className="mt-0.5 whitespace-pre-wrap">{trimmed}</div> : null}
+      {/* Shown text sits in its own bordered box so it's obvious where the rationale starts and ends. */}
+      {open ? (
+        <div className="mt-1 whitespace-pre-wrap rounded-md border border-neutral-200 bg-neutral-50 p-2 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900/50 dark:text-neutral-300">{trimmed}</div>
+      ) : null}
     </div>
   );
 }

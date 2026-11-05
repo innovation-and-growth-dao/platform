@@ -9,7 +9,6 @@ import { PledgeReturnService } from './pledge-return.service';
 import { MeritService } from '../merit/merit.service';
 
 const LOVELACE = 1_000_000;
-const SIGNING_THRESHOLD = 3; // §15 — 3-of-5 board signatures required to broadcast
 
 // §12 — reward-calculation kind → human-readable payout stage for the on-chain proof.
 const STAGE_LABEL: Record<string, string> = {
@@ -195,7 +194,7 @@ export class MultisigBroadcastService {
     // and reset any cached tx body so the next prepareTxBody rebuilds with
     // exactly those M keys in required_signers.
     const all = await this.prisma.multisigCommitment.findMany({ where: { actionId } });
-    if (all.length >= SIGNING_THRESHOLD && (action.committedKeyHashes?.length ?? 0) === 0) {
+    if (all.length >= source.threshold && (action.committedKeyHashes?.length ?? 0) === 0) {
       const sorted = all.sort((a, b) => a.committedAt.getTime() - b.committedAt.getTime());
       const chosen: string[] = [];
       const seen = new Set<string>();
@@ -204,7 +203,7 @@ export class MultisigBroadcastService {
         if (seen.has(kh)) continue;
         seen.add(kh);
         chosen.push(c.keyHash);
-        if (chosen.length === SIGNING_THRESHOLD) break;
+        if (chosen.length === source.threshold) break;
       }
       await this.prisma.multisigAction.update({
         where: { id: actionId },
@@ -219,25 +218,38 @@ export class MultisigBroadcastService {
     return {
       status: refreshed?.status ?? action.status,
       commitments: refreshed?.commitments.length ?? all.length,
-      threshold: SIGNING_THRESHOLD,
-      ready: (refreshed?.committedKeyHashes?.length ?? 0) >= SIGNING_THRESHOLD,
+      threshold: source.threshold,
+      ready: (refreshed?.committedKeyHashes?.length ?? 0) >= source.threshold,
     };
   }
 
   /** Returns the cached / freshly-built unsigned tx body hex for an action,
    *  plus the source script address (so the UI can say "signing as wallet X
    *  for multisig Y"). Idempotent: subsequent calls return the cached body. */
+  /** §15 — the signing threshold M for an action: its source multisig config's stored threshold
+   *  (the FROM config for a migration, else the active config). 2-of-3, 3-of-5, … Non-throwing:
+   *  falls back to 3 when no multisig is assembled yet, so the commitment-gate message still shows
+   *  (callers that need the actual source ADDRESS still call resolveSource, which errors properly). */
+  private async actionThreshold(action: { fromConfigId: string | null }): Promise<number> {
+    const cfg = action.fromConfigId
+      ? await this.prisma.multisigConfig.findUnique({ where: { id: action.fromConfigId }, select: { threshold: true } })
+      : await this.prisma.multisigConfig.findFirst({ where: { replacedAt: null }, orderBy: { assembledAt: 'desc' }, select: { threshold: true } });
+    return cfg?.threshold ?? 3;
+  }
+
   async prepareTxBody(actionId: string) {
     const action = await this.prisma.multisigAction.findUnique({ where: { id: actionId } });
     if (!action) throw new NotFoundException('action not found');
     if (action.status === 'CONFIRMED') throw new ConflictException('action already broadcast');
     const mode = await this.signingMode();
-    // §15 2-phase gate: the body can only be built once the M signers have
-    // been chosen via commitments (committedKeyHashes goes into
-    // required_signers verbatim). In 1-phase there's nothing to wait for.
+    // §15 2-phase gate: the body can only be built once the M signers have been chosen via commitments
+    // (committedKeyHashes goes into required_signers verbatim). In 1-phase there's nothing to wait for.
+    // M = the source config's stored threshold (2-of-3, 3-of-5, …), looked up without hard-resolving
+    // the source address so the "waiting on authorizations" message shows first.
     const committed = action.committedKeyHashes ?? [];
-    if (mode === '2_PHASE' && committed.length < SIGNING_THRESHOLD) {
-      throw new ConflictException(`waiting on board authorizations — ${committed.length}/${SIGNING_THRESHOLD} committed`);
+    const threshold = await this.actionThreshold(action);
+    if (mode === '2_PHASE' && committed.length < threshold) {
+      throw new ConflictException(`waiting on board authorizations — ${committed.length}/${threshold} committed`);
     }
     let source = await this.resolveSource(action);
     if (action.txCbor) {
@@ -391,15 +403,16 @@ export class MultisigBroadcastService {
       include: { signatures: true },
     });
     if (!action) throw new NotFoundException('action not found');
-    // §15 — 3-of-5: threshold = SIGNING_THRESHOLD, not source.keyHashes.length.
-    const threshold = SIGNING_THRESHOLD;
+    // §15 — M = the source config's stored threshold (2-of-3, 3-of-5, …); non-throwing lookup so the
+    // authorization-phase gate reports before we hard-resolve the source address.
+    const threshold = await this.actionThreshold(action);
     if (action.status === 'CONFIRMED') {
       return { status: 'CONFIRMED', txHash: action.txHash, approvals: action.signatures.length, threshold };
     }
     const mode = await this.signingMode();
     // §15 2-phase — only the M committed signers may submit witnesses.
     const committed = action.committedKeyHashes ?? [];
-    if (mode === '2_PHASE' && committed.length < SIGNING_THRESHOLD) {
+    if (mode === '2_PHASE' && committed.length < threshold) {
       throw new ConflictException('action is still in the authorization phase — collect commits first');
     }
     const source = await this.resolveSource(action);
@@ -475,7 +488,7 @@ export class MultisigBroadcastService {
     if (!action) throw new NotFoundException('action not found');
     if (!action.txCbor) throw new ConflictException('tx body not prepared');
     const source = await this.resolveSource(action);
-    const threshold = SIGNING_THRESHOLD; // §15 — 3-of-5 collected witnesses suffice
+    const threshold = source.threshold; // §15 — the source config's stored M (2-of-3, 3-of-5, …) suffices
 
     const cachedTx = CSL.Transaction.from_hex(action.txCbor);
     const txBody = cachedTx.body();

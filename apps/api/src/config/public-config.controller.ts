@@ -23,7 +23,7 @@ export class PublicConfigController {
   @Get()
   async get() {
     const rows = await this.prisma.platformConfig.findMany({
-      where: { key: { in: ['CARDANO_EXPLORER', 'INTERNAL_DEFAULT_THRESHOLD_PCT', 'INTERNAL_IMPORTANT_THRESHOLD_PCT', 'MERIT_ENABLED'] } },
+      where: { key: { in: ['CARDANO_EXPLORER', 'INTERNAL_DEFAULT_THRESHOLD_PCT', 'INTERNAL_IMPORTANT_THRESHOLD_PCT', 'MERIT_ENABLED', 'BOARD_SIZE'] } },
     });
     const val = (k: string) => rows.find((r) => r.key === k)?.value;
     const num = (k: string) =>
@@ -62,6 +62,8 @@ export class PublicConfigController {
         ?? this.config.get<string>('TREASURY_ADDRESS')
         ?? null,
       anchorMetadataLabel: 80808081,
+      // §14/§17 — board size, so the board-election form requires exactly this many candidates.
+      boardSize: num('BOARD_SIZE'),
       // §10 — internal-proposal thresholds, so the submit form can show the real % values.
       internalThresholds: {
         default: num('INTERNAL_DEFAULT_THRESHOLD_PCT'),

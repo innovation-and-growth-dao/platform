@@ -95,6 +95,11 @@ const keyAddr = (pub) => CSL.EnterpriseAddress.new(0, CSL.Credential.from_keyhas
   const activeBefore = await db.multisigConfig.findFirst({ where: { replacedAt: null } });
   if (activeBefore) await db.multisigConfig.update({ where: { id: activeBefore.id }, data: { replacedAt: new Date() } });
 
+  // merit awards are gated behind MERIT_ENABLED (§13, default off); this journey
+  // asserts the TX_SIGNED / TX_INITIATED ledger entries, so enable it for the run.
+  const meritParked = await db.platformConfig.findUnique({ where: { key: 'MERIT_ENABLED' } });
+  await db.platformConfig.upsert({ where: { key: 'MERIT_ENABLED' }, update: { value: true }, create: { key: 'MERIT_ENABLED', value: true } });
+
   // ── 5 board members with REAL Ed25519 multisig keys ──
   const mine = { users: [], dreps: [], seats: [], keys: [], props: [], actions: [], buckets: [], cfgs: [], rounds: [] };
   const board = [];
@@ -279,6 +284,8 @@ const keyAddr = (pub) => CSL.EnterpriseAddress.new(0, CSL.Credential.from_keyhas
     await db.treasuryBucket.deleteMany({ where: { id: { in: mine.buckets.map((b) => b.id) } } }).catch(() => {});
     for (const c of mine.cfgs) await db.multisigConfig.delete({ where: { id: c.id } }).catch(() => {});
     if (activeBefore) await db.multisigConfig.update({ where: { id: activeBefore.id }, data: { replacedAt: null, replacedByConfigId: null } }).catch(() => {});
+    if (meritParked) await db.platformConfig.update({ where: { key: 'MERIT_ENABLED' }, data: { value: meritParked.value } }).catch(() => {});
+    else await db.platformConfig.delete({ where: { key: 'MERIT_ENABLED' } }).catch(() => {});
     await db.boardMultisigKey.deleteMany({ where: { id: { in: mine.keys.map((k) => k.id) } } }).catch(() => {});
     await db.boardSeat.deleteMany({ where: { id: { in: mine.seats.map((s) => s.id) } } }).catch(() => {});
     await db.meritLedger.deleteMany({ where: { drepId: { in: mine.dreps.map((d) => d.id) } } }).catch(() => {});

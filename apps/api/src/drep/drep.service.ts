@@ -138,7 +138,7 @@ export class DrepService {
     // empty (0 power / stored name / no image) instead of stalling the page.
     const withDeadline = <T>(p: Promise<T>, fallback: T, ms = 9_000): Promise<T> =>
       Promise.race([p, new Promise<T>((resolve) => { setTimeout(() => resolve(fallback), ms).unref?.(); })]);
-    const [vp, activity, meta] = await Promise.all([
+    const [vp, activity, meta, epoch] = await Promise.all([
       withDeadline(
         this.cardano.drepEntryMetricsBatch(
           rows.map((r) => ({ drepId: r.drepId, ownStakeAddress: requirePower ? r.stakeAddress : undefined })),
@@ -152,6 +152,9 @@ export class DrepService {
         : Promise.resolve(null),
       // §CIP-119 — on-chain DRep name + image (else our stored name + a generic avatar).
       withDeadline(this.cardano.drepMetadata(rows.map((r) => r.drepId)), new Map()),
+      // §4 — the on-chain epoch this voting-power snapshot is active for (shown as proof the
+      // displayed power is the epoch's active value, not a live/next-epoch figure). 0 if unknown.
+      withDeadline(this.cardano.currentEpoch(), 0),
     ]);
 
     const members = await Promise.all(
@@ -177,6 +180,7 @@ export class DrepService {
           image: r.photo ?? m?.image ?? null,
           isBoard: r.isBoard,
           votingPowerAda: Math.round(Number(power.votingPowerLovelace) / 1_000_000),
+          votingPowerEpoch: epoch, // the epoch this active voting power is snapshotted for
           delegators: power.delegators,
           merit,
           basePower: round(base),

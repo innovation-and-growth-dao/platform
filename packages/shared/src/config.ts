@@ -47,6 +47,26 @@ export const PLATFORM_CONFIG_DEFAULTS = {
   // without being named in the body, e.g. Eternl). 2_PHASE: Authorize → Sign ceremony that
   // works with any CIP-30 wallet — the backup when a member's wallet can't do 1-phase.
   TX_SIGNING_PROCESS: '1_PHASE', // 1_PHASE | 2_PHASE
+  // Invite link to the community/coordination Telegram group, shown on the landing page.
+  // Empty (default) → the Telegram invite is not shown at all.
+  TELEGRAM_GROUP_URL: '',
+  // §14/§17 — how many seats the board has. A board-member election must put up exactly this many
+  // candidates, the genesis board-seating caps at it, and it drives the default multisig threshold
+  // (majority of the seated keys). Default 5.
+  BOARD_SIZE: 5,
+  // §15 — board multisig signing threshold (M of the N board keys). 0 (default) = automatic MAJORITY
+  // of the actually-seated keys (3-of-5, 2-of-3, …). A positive value forces an explicit M (clamped
+  // to 1…N). Applied when the multisig is (re-)assembled; existing wallets keep their stored threshold.
+  MULTISIG_THRESHOLD: 0,
+  // §10 — allow pushing out an internal proposal's voting deadline while it is still ACTIVE. ENABLED
+  // (default): a board-member election may be extended ONLY by its submitter; every other internal
+  // proposal ONLY by a board member. Content stays frozen — only the deadline moves — and each
+  // extension is recorded + anchored on-chain. DISABLED: the deadline is fixed at submission.
+  INTERNAL_EXTEND_ENABLED: true,
+  // §15.3 — how much ADA the platform auto-tops-up the anchor hot wallet with when its balance drops
+  // below the low-balance threshold (100 ₳). The hot wallet only pays Cardano fees for anchor txs, so
+  // a small running balance is enough. Default 50 ₳; clamped to the single-top-up cap (1000 ₳).
+  PLATFORM_HOT_WALLET_TOPUP_AMOUNT: 50,
 } as const;
 
 export type PlatformConfigKey = keyof typeof PLATFORM_CONFIG_DEFAULTS;
@@ -61,6 +81,8 @@ export type PlatformConfigKey = keyof typeof PLATFORM_CONFIG_DEFAULTS;
  * are set per round in the round setup — not here.
  */
 export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
+  TELEGRAM_GROUP_URL:
+    'Invite link to the community Telegram group (e.g. https://t.me/+…), shown on the landing page below the flow strip. Leave empty to hide the invite entirely.',
   MILESTONE_MAX_REJECTIONS:
     'After a milestone POA is rejected this many times, the platform automatically opens a stop-funding proposal for the board (0 = disabled).',
   DREP_OPEN_ADMISSION:
@@ -92,6 +114,14 @@ export const PLATFORM_CONFIG_META: Record<PlatformConfigKey, string> = {
   CARDANO_EXPLORER: 'Block explorer for on-chain links: cardanoscan, cexplorer, or adastat.',
   TX_SIGNING_PROCESS:
     'Multisig signing ceremony. 1-Phase (default): each board member signs the tx once — requires the Eternl wallet (broadcasts on the 3rd signature). 2-Phase: Authorize → Sign — the backup that works with any CIP-30 wallet.',
+  BOARD_SIZE:
+    'Number of board seats. A board-member election must put up exactly this many candidates, genesis board-seating is capped at it, and it drives the default multisig threshold (majority). Typical: 5 (3-of-5 multisig) or 3 (2-of-3).',
+  MULTISIG_THRESHOLD:
+    'Board treasury multisig signing threshold — how many of the N board keys must sign. 0 (default) = automatic majority of the seated keys (so 5 keys → 3-of-5, 3 keys → 2-of-3). A positive number forces an explicit M (clamped to 1…N). Takes effect when the multisig is next assembled; existing wallets keep their threshold until funds migrate.',
+  INTERNAL_EXTEND_ENABLED:
+    'Allow extending an internal proposal\'s voting deadline while it is still open. ENABLED (default): a board-member election can be extended only by the member who submitted it; every other internal proposal only by a board member. Only the deadline moves — the proposal content stays frozen from submission — and each extension is recorded and anchored on-chain. DISABLED: the voting end is fixed at submission and cannot change.',
+  PLATFORM_HOT_WALLET_TOPUP_AMOUNT:
+    'How much ADA to auto-top-up the anchor hot wallet with when its balance drops below the low-balance threshold (100 ₳). The hot wallet only pays Cardano fees for on-chain anchoring, so a small running balance is enough. Default 50 ₳; clamped to the single-top-up cap (1000 ₳).',
 };
 
 /**

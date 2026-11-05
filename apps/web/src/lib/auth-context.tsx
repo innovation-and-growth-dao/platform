@@ -23,6 +23,7 @@ interface AuthState {
   refreshWallets: () => void;
   /** Best-effort DRep ID from the connected wallet (CIP-95); null if unavailable. */
   detectDRepId: () => Promise<string | null>;
+  detectDRepRegistered: () => Promise<boolean>;
   /** Sign a message with the connected wallet's stake key (CIP-30 signData); null if unavailable. */
   signMessage: (message: string) => Promise<{ signature: string; key: string } | null>;
   /** Sign a Cardano transaction body via CIP-30 signTx (partialSign=true).
@@ -111,6 +112,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return detectDRepId(walletApiRef.current);
   }, []);
 
+  // Whether the connected wallet's CIP-95 DRep key is a REGISTERED on-chain DRep. Used to gate the
+  // "Verify DRep key" proof prompt/button: CIP-95 wallets derive a DRep key for every account, so a
+  // plain ADA holder (non-DRep) must not be prompted. Returns false when no wallet/key is available.
+  const detectDRepRegistered = useCallback(async () => {
+    const api = walletApiRef.current;
+    if (!api) return false;
+    try {
+      const drepKeyHex = await getDRepKeyHex(api);
+      if (!drepKeyHex) return false;
+      return (await authApi.drepRegistered(drepKeyHex)).registered;
+    } catch {
+      return false;
+    }
+  }, []);
+
   // Sign a message with the wallet's stake key. Re-acquires the SAME wallet the user
   // logged in with (never a different injected wallet) if the api was lost on reload.
   // Returns null only when no such wallet is available; **throws if the user cancels /
@@ -173,6 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refresh,
         refreshWallets,
         detectDRepId: detect,
+        detectDRepRegistered,
         signMessage,
         signTx,
         proveDrepKey,

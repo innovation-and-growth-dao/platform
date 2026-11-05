@@ -124,15 +124,15 @@ export function AdminGenesis({ onBoardChange }: { onBoardChange?: () => void }) 
       {/* Seated members — each removable. */}
       {state.board.length > 0 ? (
         <>
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-slate-500">
             Current board ({state.board.length})
           </div>
           <ul className="mb-4 space-y-1 text-xs">
             {state.board.map((b) => (
-              <li key={b.drepId} className="flex items-center justify-between gap-2 rounded border border-slate-700 p-2">
+              <li key={b.drepId} className="flex items-center justify-between gap-2 rounded border border-neutral-300 dark:border-slate-700 p-2">
                 <div className="min-w-0">
                   <span className="font-medium">{b.displayName}</span>
-                  <span className="ml-2 break-all font-mono text-slate-400">{b.drepId}</span>
+                  <span className="ml-2 break-all font-mono text-neutral-500 dark:text-slate-400">{b.drepId}</span>
                 </div>
                 <button
                   onClick={() => removeSeated(b.drepId, b.displayName)}
@@ -146,24 +146,24 @@ export function AdminGenesis({ onBoardChange }: { onBoardChange?: () => void }) 
           </ul>
         </>
       ) : (
-        <p className="mb-4 text-sm text-slate-400">No board configured.</p>
+        <p className="mb-4 text-sm text-neutral-500 dark:text-slate-400">No board configured.</p>
       )}
 
       {/* Manual insert — one at a time. */}
-      <div className="mb-4 rounded border border-slate-800 p-3">
+      <div className="mb-4 rounded border border-neutral-200 dark:border-slate-800 p-3">
         <div className="mb-2 text-sm font-medium">Add a board member</div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             value={addName}
             onChange={(e) => setAddName(e.target.value)}
             placeholder="Name (e.g. Alice)"
-            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm sm:w-40"
+            className="rounded-md border border-neutral-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-sm sm:w-40"
           />
           <input
             value={addId}
             onChange={(e) => setAddId(e.target.value)}
             placeholder="drep1…"
-            className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 font-mono text-xs"
+            className="flex-1 rounded-md border border-neutral-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 font-mono text-xs"
           />
           <button
             onClick={addOne}
@@ -173,7 +173,7 @@ export function AdminGenesis({ onBoardChange }: { onBoardChange?: () => void }) 
             {busy ? 'Verifying…' : 'Add'}
           </button>
         </div>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-neutral-400 dark:text-slate-500">
           Verified on-chain — only a registered, active DRep can be added.
         </p>
       </div>
@@ -181,12 +181,12 @@ export function AdminGenesis({ onBoardChange }: { onBoardChange?: () => void }) 
       {/* File upload — bulk, incremental. */}
       {state.canAddMore ? (
         <>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-neutral-500 dark:text-slate-400">
             Or upload a genesis file — a JSON array of <code>{'{ "name", "drep_id" }'}</code> objects (or a{' '}
             <code>{'{ "Name": "drep1…" }'}</code> map). Re-uploading is incremental: only new DReps are added,
             up to {state.maxBoard} total.
           </p>
-          <pre className="my-2 overflow-x-auto rounded border border-slate-800 bg-slate-950 p-2 text-[11px] text-slate-400">{EXAMPLE}</pre>
+          <pre className="my-2 overflow-x-auto rounded border border-neutral-200 dark:border-slate-800 bg-neutral-100 dark:bg-slate-950 p-2 text-[11px] text-neutral-500 dark:text-slate-400">{EXAMPLE}</pre>
           <input
             type="file"
             accept="application/json,.json"
@@ -202,16 +202,16 @@ export function AdminGenesis({ onBoardChange }: { onBoardChange?: () => void }) 
               <div className="text-sm font-medium">Verified — ready to install ({state.proposedBoard.length}):</div>
               <ul className="space-y-1 text-xs">
                 {state.proposedBoard.map((m) => (
-                  <li key={m.drep_id} className="flex items-center justify-between gap-2 rounded border border-slate-700 p-2">
+                  <li key={m.drep_id} className="flex items-center justify-between gap-2 rounded border border-neutral-300 dark:border-slate-700 p-2">
                     <div className="min-w-0">
                       <span className="font-medium">{m.name}</span>
-                      <span className="ml-2 break-all font-mono text-slate-400">{m.drep_id}</span>
+                      <span className="ml-2 break-all font-mono text-neutral-500 dark:text-slate-400">{m.drep_id}</span>
                     </div>
                     <button
                       onClick={() => excludeStaged(m.drep_id)}
                       disabled={busy}
                       title="Drop this entry before installing"
-                      className="shrink-0 rounded border border-slate-600 px-2 py-1 text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                      className="shrink-0 rounded border border-neutral-300 dark:border-slate-600 px-2 py-1 text-neutral-700 dark:text-slate-300 hover:bg-neutral-100 dark:hover:bg-slate-800 disabled:opacity-50"
                     >
                       ✕
                     </button>
@@ -222,7 +222,7 @@ export function AdminGenesis({ onBoardChange }: { onBoardChange?: () => void }) 
                 <button onClick={approve} disabled={busy} className="mt-2 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
                   {busy ? 'Installing…' : 'Approve & install'}
                 </button>
-                <button onClick={reject} disabled={busy} className="mt-2 rounded-md border border-slate-700 px-3 py-1.5 text-sm hover:bg-slate-800 disabled:opacity-50">
+                <button onClick={reject} disabled={busy} className="mt-2 rounded-md border border-neutral-300 dark:border-slate-700 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-slate-800 disabled:opacity-50">
                   Discard all
                 </button>
               </div>
@@ -270,16 +270,16 @@ function ConfirmModal({ confirm, busy, onClose }: { confirm: Confirm; busy: bool
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
+        className="w-full max-w-sm rounded-lg border border-neutral-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-base font-semibold text-slate-100">{confirm.title}</h3>
-        <p className="mt-2 text-sm text-slate-400">{confirm.body}</p>
+        <h3 className="text-base font-semibold text-neutral-900 dark:text-slate-100">{confirm.title}</h3>
+        <p className="mt-2 text-sm text-neutral-500 dark:text-slate-400">{confirm.body}</p>
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={onClose}
             disabled={busy}
-            className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+            className="rounded-md border border-neutral-300 dark:border-slate-700 px-3 py-1.5 text-sm text-neutral-800 dark:text-slate-200 hover:bg-neutral-100 dark:hover:bg-slate-800 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -301,8 +301,8 @@ function ConfirmModal({ confirm, busy, onClose }: { confirm: Confirm; busy: bool
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">{title}</h2>
+    <section className="rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-slate-400">{title}</h2>
       {children}
     </section>
   );

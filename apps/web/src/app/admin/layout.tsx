@@ -6,7 +6,7 @@ import { AdminAuthProvider } from '@/lib/admin-auth-context';
 export default function SysadminLayout({ children }: { children: React.ReactNode }) {
   return (
     <AdminAuthProvider>
-      <div className="min-h-screen bg-slate-950 text-slate-100">
+      <div className="min-h-screen bg-neutral-100 dark:bg-slate-950 text-neutral-900 dark:text-slate-100">
         <div className="bg-amber-600/90 px-4 py-1.5 text-center text-xs font-semibold tracking-wide text-black">
           PLATFORM ADMIN — handle with care
         </div>

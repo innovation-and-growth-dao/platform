@@ -123,6 +123,17 @@ export interface AnchorVote {
 export interface AnchorResultMetadata {
   title: string;
   subject: GovSubject;
+  /**
+   * WHAT WAS VOTED ON, BY ITS OWN NAME.
+   *
+   * `title` says what KIND of decision this is ("Internal proposal"), which is
+   * not what somebody reading the chain is looking for: they want "Approve
+   * DRep Council Interim Charter v0.2". It was in `applicant`, a key nobody
+   * would think to read for a rule approval, so it is here under the name a
+   * parser would try first. Trimmed to the 64 bytes Cardano allows a metadata
+   * string.
+   */
+  name?: string;
   proposalId?: string; // structured public id (e.g. "R3-P2" or "Internal 4") when about a proposal
   docHash?: string; // sha256 of the proposal's title+content (internal proposals) — date-independent
   electedBoard?: { drep: string; name: string }[]; // §14 — the elected candidates on a board election
@@ -135,7 +146,20 @@ export interface AnchorResultMetadata {
   // yes/no/totalPower are integers for 1P1V (vote counts) and exact-decimal strings for BALANCED /
   // ONCHAIN (fractional power); threshold is always whole (a count or a percentage). `unit` names
   // the voting method: "1 vote" (1P1V), "adjusted power" (BALANCED), "on-chain power" (ONCHAIN).
-  tally: { yes: number | string; no: number | string; threshold: number; unit: '1 vote' | 'adjusted power' | 'on-chain power'; totalPower?: number | string };
+  // `no` is everything that is not a YES and not an abstention — including the
+  // power of members who did not vote at all, because a threshold here is a
+  // share of the WHOLE eligible power. That is easy to misread as "people who
+  // voted no", so the two parts are also given separately: `abstain` and
+  // `didNotVote` (BALANCED/ONCHAIN only, where the numbers exist).
+  tally: {
+    yes: number | string;
+    no: number | string;
+    threshold: number;
+    unit: '1 vote' | 'adjusted power' | 'on-chain power';
+    totalPower?: number | string;
+    abstain?: number | string;
+    didNotVote?: number | string;
+  };
   outcome: string;
   decidedAt: string;
   proofHash?: string;
@@ -154,6 +178,7 @@ export function buildResultMetadata(p: {
   no: number;
   threshold: number;
   totalPower?: number;
+  abstain?: number; // summed power of the abstentions (BALANCED/ONCHAIN)
   outcome: string;
   proofHash?: string;
   verify?: string;
@@ -171,9 +196,25 @@ export function buildResultMetadata(p: {
     const x = typeof n === 'string' ? Number(n) : n;
     return balanced ? String(Math.round(x * 100) / 100) : r(x);
   };
+  // 64 bytes is the hard limit on a metadata string; a longer name is cut on a
+  // character boundary rather than making the whole submission fail.
+  // Counted by hand: this package is shared by the API and the browser bundle,
+  // and its tsconfig has neither Node's Buffer nor the DOM's TextEncoder.
+  const bytes = (v: string) =>
+    encodeURIComponent(v).replace(/%[0-9A-F]{2}/g, 'x').length;
+  const fit64 = (v: string): string => {
+    let out = v;
+    while (bytes(out) > 64) out = out.slice(0, -1);
+    return out;
+  };
+  const voted = p.votes.reduce(
+    (a, v) => a + (v.power == null ? 1 : Number(v.power)),
+    0,
+  );
   const meta: AnchorResultMetadata = {
     title: SUBJECT_TITLE[p.subject],
     subject: p.subject,
+    ...(p.applicant ? { name: fit64(p.applicant) } : {}),
     ...(p.proposalId ? { proposalId: p.proposalId } : {}),
     ...(p.docHash ? { docHash: p.docHash } : {}),
     ...(p.electedBoard && p.electedBoard.length ? { electedBoard: p.electedBoard } : {}),
@@ -186,6 +227,10 @@ export function buildResultMetadata(p: {
       threshold: r(p.threshold), // a vote count (1P1V) or a percentage (balanced) — always whole
       unit,
       ...(balanced && p.totalPower != null ? { totalPower: pow(p.totalPower) } : {}),
+      ...(balanced && p.abstain != null ? { abstain: pow(p.abstain) } : {}),
+      ...(balanced && p.totalPower != null
+        ? { didNotVote: pow(Math.max(0, Math.round((p.totalPower - voted) * 100) / 100)) }
+        : {}),
     },
     outcome: p.outcome,
     decidedAt: new Date().toISOString(),
@@ -439,6 +484,15 @@ export function decodeGovEvent(metadataForLabel: unknown): GovEvent {
     throw new Error(`unknown governance event type: ${String(o.t)}`);
   }
   return o as unknown as GovEvent;
+}
+
+/**
+ * §24 — decode one label's metadata into the list of events it carries. A single decision is
+ * stored as a bare object (historical shape); a batch is stored as an array (several decisions
+ * sharing one tx). This normalises both to an array so verifiers can match by proofHash.
+ */
+export function decodeGovEvents(metadataForLabel: unknown): GovEvent[] {
+  return (Array.isArray(metadataForLabel) ? metadataForLabel : [metadataForLabel]).map(decodeGovEvent);
 }
 
 export interface TallyResult {

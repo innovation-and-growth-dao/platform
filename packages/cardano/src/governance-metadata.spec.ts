@@ -245,3 +245,57 @@ describe('buildMultisigMigrationMetadata (§15.2 — funds-moved anchor)', () =>
     expect(Number.isInteger(meta.totalLovelace)).toBe(true);
   });
 });
+
+// THE FIRST MAINNET VOTE, read as a stranger would read it.
+//
+// A rule approval put the decision's own name in `applicant` and said only
+// "Internal proposal" in `title` — accurate and useless to anyone parsing the
+// chain for "Approve DRep Council Interim Charter v0.2". And `no` is everything
+// that is not a yes: abstentions AND the members who never voted, which reads
+// as "voted against" unless the parts are given.
+describe('a decision names itself on-chain', () => {
+  const meta = () =>
+    buildResultMetadata({
+      subject: GovSubject.INTERNAL,
+      style: VotingStyle.BALANCED,
+      applicant: 'Approve DRep Council Interim Charter v0.2',
+      proposalId: 'Internal 1',
+      docHash: 'a'.repeat(64),
+      votes: [
+        { drep: 'drep1a', vote: 'YES', power: 5.78 },
+        { drep: 'drep1b', vote: 'ABSTAIN', power: 2 },
+      ],
+      yes: 5.78,
+      no: 70.91,
+      abstain: 2,
+      threshold: 67,
+      totalPower: 76.69,
+      outcome: 'APPROVED',
+    })[GOVERNANCE_METADATA_LABEL];
+
+  it('carries the name of what was decided', () => {
+    expect(meta().name).toBe('Approve DRep Council Interim Charter v0.2');
+  });
+
+  it('splits what is not a yes into abstentions and silence', () => {
+    const t = meta().tally;
+    expect(t.abstain).toBe('2');
+    // 76.69 eligible − 7.78 that voted = 68.91 that never did.
+    expect(t.didNotVote).toBe('68.91');
+    expect(t.no).toBe('70.91');
+  });
+
+  it('keeps every string inside Cardano 64-byte metadata limit', () => {
+    const long = buildResultMetadata({
+      subject: GovSubject.INTERNAL,
+      style: VotingStyle.BALANCED,
+      applicant: 'A'.repeat(200),
+      votes: [],
+      yes: 1,
+      no: 0,
+      threshold: 67,
+      outcome: 'APPROVED',
+    })[GOVERNANCE_METADATA_LABEL];
+    expect(long.name!.length).toBeLessThanOrEqual(64);
+  });
+});

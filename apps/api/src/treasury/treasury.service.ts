@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { boardActionMessage } from '@drep-dao/cardano';
+import { PLATFORM_CONFIG_DEFAULTS } from '@drep-dao/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { CardanoQueryService } from '../cardano/cardano-query.service';
 import { AnchorService } from '../cardano/anchor.service';
@@ -33,13 +34,18 @@ export interface TreasuryTx {
   // Which treasury address the funds left (board actions; for search).
   sourceAddress?: string;
 }
-const APPROVAL_THRESHOLD = 3; // 3-of-5 board multisig
+const APPROVAL_THRESHOLD = 3; // fallback only — the real M is the active MultisigConfig.threshold (2-of-3, 3-of-5, …)
 const HOT_WALLET_MIN_ADA = 100; // below this, the platform prepares a top-up
-const HOT_WALLET_TOPUP_ADA = 500;
+// §15.3 — the auto top-up AMOUNT is board/admin-configurable (PLATFORM_HOT_WALLET_TOPUP_AMOUNT);
+// see autoTopUpAda(). The default lives in PLATFORM_CONFIG_DEFAULTS.
 // §15.3 — hard cap on a single board-prepared top-up. The hot wallet only
 // pays Cardano fees for anchor txs, so a small running balance is enough;
 // large amounts shouldn't sit there unsigned. Configurable later if needed.
 const HOT_WALLET_TOPUP_MAX_ADA = 1000;
+// §15.3 — Postgres advisory-lock key that serializes the AUTO top-up's check-then-create, so
+// concurrent treasury-status reads (page reloads, multiple tabs) can't each create a duplicate
+// pending top-up. Arbitrary but stable per deployment.
+const HOT_WALLET_TOPUP_LOCK = 915030001;
 
 @Injectable()
 export class TreasuryService implements OnModuleInit {
@@ -79,6 +85,17 @@ export class TreasuryService implements OnModuleInit {
       select: { bech32Address: true },
     });
     return active?.bech32Address ?? this.config.get<string>('TREASURY_ADDRESS') ?? null;
+  }
+
+  /** §15 — M (board signatures needed) = the ACTIVE multisig config's stored threshold (2-of-3,
+   *  3-of-5, …), not a constant. Falls back to APPROVAL_THRESHOLD only before any multisig exists. */
+  private async activeThreshold(): Promise<number> {
+    const active = await this.prisma.multisigConfig.findFirst({
+      where: { replacedAt: null },
+      orderBy: { assembledAt: 'desc' },
+      select: { threshold: true },
+    });
+    return active?.threshold ?? APPROVAL_THRESHOLD;
   }
 
   async overview() {
@@ -272,25 +289,52 @@ export class TreasuryService implements OnModuleInit {
   async maybePrepareTopUp() {
     const hot = this.anchor.hotWalletAddress();
     if (!hot) return;
-    const open = await this.prisma.multisigAction.findFirst({ where: { kind: 'OPS', status: 'PENDING_SIGS', description: { contains: 'hot wallet' } } });
-    if (open) return;
     // Strict read: Koios unavailable → null (NOT a 0-filled map), so a transient
     // lookup failure is never mistaken for an empty wallet → no spurious top-up.
     const bal = await this.cardano.addressBalanceStrict([hot]);
     if (!bal) return;
-    if (Number(bal.get(hot) ?? 0n) / ADA >= HOT_WALLET_MIN_ADA) return;
+
+    // Balance FIRST: if the hot wallet is already topped up, cancel any lingering AUTO top-up so it
+    // doesn't sit in "Actions to sign" as a signable duplicate (it could otherwise send a redundant
+    // top-up once the treasury is funded). This happens when a top-up pays and a new one was auto-
+    // prepared a moment earlier, before the paid balance reflected on-chain (Koios lag). An AUTO
+    // top-up is identified by its "balance below" description — a board-REQUESTED one is left alone.
+    if (Number(bal.get(hot) ?? 0n) / ADA >= HOT_WALLET_MIN_ADA) {
+      const stale = await this.prisma.multisigAction.findMany({ where: { kind: 'OPS', status: 'PENDING_SIGS', description: { contains: 'balance below' } } });
+      for (const s of stale) {
+        await this.prisma.multisigAction.update({
+          where: { id: s.id },
+          data: { status: 'FAILED', description: `${s.description}\n\n[Auto-cancelled: the hot wallet is already above ${HOT_WALLET_MIN_ADA} ₳, so no top-up is needed.]` },
+        }).catch(() => undefined);
+      }
+      return;
+    }
+
+    // Still low — don't pile on if a 'hot wallet' top-up (auto OR board-requested) is already pending.
+    const open = await this.prisma.multisigAction.findFirst({ where: { kind: 'OPS', status: 'PENDING_SIGS', description: { contains: 'hot wallet' } } });
+    if (open) return;
     // §15.6 — route to the OPERATIONS default bucket (fallback primary).
     const bucket = await this.buckets.defaultBucketFor('OPERATIONS');
-    await this.prisma.multisigAction.create({
-      data: {
-        kind: 'OPS',
-        status: 'PENDING_SIGS',
-        amountAda: BigInt(HOT_WALLET_TOPUP_ADA * ADA),
-        // destAddress = hot wallet so the Actions UI shows the full destination + Copy button.
-        destAddress: hot,
-        description: `Top up the anchor hot wallet — balance below ${HOT_WALLET_MIN_ADA} ₳`,
-        sourceBucketId: bucket?.id ?? null,
-      },
+    const amountLovelace = BigInt((await this.autoTopUpAda()) * ADA);
+    // maybePrepareTopUp runs on every treasury-status read, so concurrent reads (reloads, multiple
+    // tabs, cancel+refresh) all clear the checks above before any of them creates the action — a
+    // check-then-create race that spawned duplicate top-ups. Serialize the create on a
+    // transaction-level advisory lock and RE-CHECK inside it, so only the first caller creates one.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${HOT_WALLET_TOPUP_LOCK})`;
+      const stillOpen = await tx.multisigAction.findFirst({ where: { kind: 'OPS', status: 'PENDING_SIGS', description: { contains: 'hot wallet' } } });
+      if (stillOpen) return;
+      await tx.multisigAction.create({
+        data: {
+          kind: 'OPS',
+          status: 'PENDING_SIGS',
+          amountAda: amountLovelace,
+          // destAddress = hot wallet so the Actions UI shows the full destination + Copy button.
+          destAddress: hot,
+          description: `Top up the anchor hot wallet — balance below ${HOT_WALLET_MIN_ADA} ₳`,
+          sourceBucketId: bucket?.id ?? null,
+        },
+      });
     });
   }
 
@@ -544,6 +588,7 @@ export class TreasuryService implements OnModuleInit {
       threshold?: number;   // for top-ups: how many needed (always 3)
     };
     const items: Item[] = [];
+    const topupThreshold = await this.activeThreshold();
     for (const t of topups) {
       items.push({
         id: t.id,
@@ -555,7 +600,7 @@ export class TreasuryService implements OnModuleInit {
         initiatedBy: null,
         status: t.status,
         approvals: t.signatures.length,
-        threshold: APPROVAL_THRESHOLD,
+        threshold: topupThreshold,
       });
     }
     for (const s of sweeps) {
@@ -576,12 +621,23 @@ export class TreasuryService implements OnModuleInit {
 
   /** Surface the per-platform constants the UI needs (top-up cap, low-balance
    *  threshold) so the form can validate locally + show the right help text. */
-  hotWalletPolicy() {
+  async hotWalletPolicy() {
     return {
       minAda: HOT_WALLET_MIN_ADA,
       topUpMaxAda: HOT_WALLET_TOPUP_MAX_ADA,
-      autoTopUpAda: HOT_WALLET_TOPUP_ADA,
+      autoTopUpAda: await this.autoTopUpAda(),
     };
+  }
+
+  /** §15.3 — the auto top-up amount (ADA) applied when the hot wallet drops below
+   *  HOT_WALLET_MIN_ADA. Board/admin-configurable via PLATFORM_HOT_WALLET_TOPUP_AMOUNT;
+   *  falls back to the default and is clamped to (0, HOT_WALLET_TOPUP_MAX_ADA]. */
+  private async autoTopUpAda(): Promise<number> {
+    const def = PLATFORM_CONFIG_DEFAULTS.PLATFORM_HOT_WALLET_TOPUP_AMOUNT as number;
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: 'PLATFORM_HOT_WALLET_TOPUP_AMOUNT' } }).catch(() => null);
+    const n = row && typeof row.value === 'number' ? Number(row.value) : def;
+    if (!Number.isFinite(n) || n <= 0) return def;
+    return Math.min(n, HOT_WALLET_TOPUP_MAX_ADA);
   }
 
   /**
@@ -839,8 +895,9 @@ export class TreasuryService implements OnModuleInit {
     });
 
     const count = await this.prisma.multisigSignature.count({ where: { actionId } });
+    const threshold = await this.activeThreshold();
     let status = action.status;
-    if (count >= APPROVAL_THRESHOLD) {
+    if (count >= threshold) {
       // 3-of-5 reached. Before flipping to READY, sanity-check that the
       // treasury can actually cover the amount — otherwise the disbursement
       // would fail at broadcast and the action would sit in limbo. Refuse
@@ -863,7 +920,7 @@ export class TreasuryService implements OnModuleInit {
       status = 'READY';
       await this.prisma.multisigAction.update({ where: { id: actionId }, data: { status } });
     }
-    return { approvals: count, threshold: APPROVAL_THRESHOLD, status };
+    return { approvals: count, threshold, status };
   }
 
   /**

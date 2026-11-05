@@ -29,7 +29,7 @@ function ResetPasswordInner() {
     }
   };
 
-  const field = 'w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-500';
+  const field = 'w-full rounded-md border border-neutral-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-500';
 
   if (!token) return <p className="text-sm text-red-400">Missing reset token.</p>;
   if (done) {
@@ -55,7 +55,7 @@ function ResetPasswordInner() {
 
 export default function ResetPasswordPage() {
   return (
-    <main className="mx-auto max-w-md p-6 text-slate-200">
+    <main className="mx-auto max-w-md p-6 text-neutral-800 dark:text-slate-200">
       <Suspense fallback={null}>
         <ResetPasswordInner />
       </Suspense>

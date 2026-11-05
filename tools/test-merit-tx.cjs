@@ -30,6 +30,11 @@ const ok = (l, c, d) => { console.log(`  ${c ? '✅' : '❌'} ${l}${d ? ` — ${
   const prisma = new PrismaService(config);
   const merit = new MeritService(prisma);
 
+  // merit awards are gated behind MERIT_ENABLED (§13, default off); this suite
+  // asserts the ledger deltas, so enable it for the run and restore afterwards.
+  const meritParked = await db.platformConfig.findUnique({ where: { key: 'MERIT_ENABLED' } });
+  await db.platformConfig.upsert({ where: { key: 'MERIT_ENABLED' }, update: { value: true }, create: { key: 'MERIT_ENABLED', value: true } });
+
   console.log('— shared deltas —');
   ok('TX_INITIATED = +1', MERIT_DELTAS.TX_INITIATED === 1);
   ok('TX_SIGNED = +1', MERIT_DELTAS.TX_SIGNED === 1);
@@ -57,6 +62,8 @@ const ok = (l, c, d) => { console.log(`  ${c ? '✅' : '❌'} ${l}${d ? ` — ${
     await db.multisigAction.delete({ where: { id: action.id } }).catch(() => {});
     await db.drep.delete({ where: { id: drep.id } }).catch(() => {});
     await db.appUser.delete({ where: { id: user.id } }).catch(() => {});
+    if (meritParked) await db.platformConfig.update({ where: { key: 'MERIT_ENABLED' }, data: { value: meritParked.value } }).catch(() => {});
+    else await db.platformConfig.delete({ where: { key: 'MERIT_ENABLED' } }).catch(() => {});
     await db.$disconnect();
     await prisma.$disconnect().catch(() => {});
   }

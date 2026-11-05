@@ -82,6 +82,16 @@ export class AuthController {
     return this.drepLink.issueChallenge(ctx.userId, ctx.stakeKeyHash, dto.drepKeyHex);
   }
 
+  // POST /api/v1/auth/drep/registered → is the wallet's CIP-95 DRep key a REGISTERED on-chain DRep?
+  // The UI uses this to decide whether to show the "Verify DRep key" proof prompt at all — CIP-95
+  // wallets derive a DRep key for every account, so a plain ADA holder (non-DRep) must not see it.
+  @UseGuards(JwtAuthGuard)
+  @RateLimit({ points: 20, durationSec: 60, by: 'ip' })
+  @Post('drep/registered')
+  async drepRegistered(@Body() dto: DrepChallengeDto) {
+    return { registered: await this.users.isClaimedDrepRegistered(dto.drepKeyHex) };
+  }
+
   // POST /api/v1/auth/drep/verify → SEC-01: verify the DRep-key signature, record a proven binding
   @UseGuards(JwtAuthGuard)
   @RateLimit({ points: 10, durationSec: 60, by: 'ip' })

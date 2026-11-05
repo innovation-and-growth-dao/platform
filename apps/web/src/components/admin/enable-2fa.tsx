@@ -40,7 +40,7 @@ export function Enable2FA({ onEnabled }: { onEnabled: () => void }) {
   return (
     <section className="rounded-lg border border-amber-800/60 bg-amber-950/20 p-4">
       <h2 className="text-sm font-semibold text-amber-300">Two-factor authentication is not enabled</h2>
-      <p className="mt-1 text-sm text-slate-400">
+      <p className="mt-1 text-sm text-neutral-500 dark:text-slate-400">
         Privileged actions (hot-wallet sweep, seed rotation, genesis, admin changes) require a fresh 2FA code. Enable it to use them.
       </p>
 
@@ -59,12 +59,12 @@ export function Enable2FA({ onEnabled }: { onEnabled: () => void }) {
             <img src={setup.totpQrDataUrl} alt="2FA QR code" width={160} height={160} className="rounded bg-white p-1" />
             <div className="min-w-0 space-y-2 text-sm">
               <div>
-                <div className="text-slate-400">Or enter this key manually:</div>
-                <code className="break-all font-mono text-xs text-slate-200">{setup.totpBase32}</code>
+                <div className="text-neutral-500 dark:text-slate-400">Or enter this key manually:</div>
+                <code className="break-all font-mono text-xs text-neutral-800 dark:text-slate-200">{setup.totpBase32}</code>
               </div>
               <div>
-                <div className="text-slate-400">Recovery codes (store safely — shown once):</div>
-                <div className="mt-1 grid grid-cols-2 gap-x-4 font-mono text-xs text-slate-300">
+                <div className="text-neutral-500 dark:text-slate-400">Recovery codes (store safely — shown once):</div>
+                <div className="mt-1 grid grid-cols-2 gap-x-4 font-mono text-xs text-neutral-700 dark:text-slate-300">
                   {setup.recoveryCodes.map((c) => (
                     <span key={c}>{c}</span>
                   ))}
@@ -79,7 +79,7 @@ export function Enable2FA({ onEnabled }: { onEnabled: () => void }) {
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, ''))}
               placeholder="Enter code to confirm"
-              className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-center font-mono tracking-widest text-slate-100 outline-none focus:border-emerald-500"
+              className="rounded-md border border-neutral-300 dark:border-slate-700 bg-neutral-100 dark:bg-slate-950 px-3 py-2 text-center font-mono tracking-widest text-neutral-900 dark:text-slate-100 outline-none focus:border-emerald-500"
             />
             <button
               onClick={confirm}

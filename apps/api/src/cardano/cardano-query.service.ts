@@ -7,7 +7,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { blockfrostDrepStatus, blockfrostLovelace, type BlockfrostDRepRow } from './blockfrost-map';
 
 export interface DRepStatus {
+  // Has a LIVE registration cert on-chain (never deregistered/retired). Independent of the
+  // CIP-1694 activity window: a DRep that stopped voting goes `active:false` WITHOUT any
+  // certificate, but stays `registered:true` until it explicitly deregisters. The platform
+  // must not treat an inactive-but-registered DRep as "not a DRep".
   registered: boolean;
+  active: boolean; // registered AND its activity window has not lapsed (Koios active / not expired)
   keyHashHex: string | null; // 28-byte DRep credential, from chain
   amountLovelace: bigint; // on-chain voting power (total delegated stake), 0 if none/unknown
 }
@@ -33,6 +38,9 @@ export class CardanoQueryService {
   // Single process, so a plain Map is enough; lost on restart by design.
   private readonly vpCache = new Map<string, { value: { votingPowerLovelace: bigint; delegators: number }; expiresAt: number }>();
   private readonly VP_TTL_MS = 10 * 60 * 1000;
+  // Current on-chain epoch — the snapshot that DRep voting power (drep_info.amount) is active for.
+  // Changes once per ~5-day epoch, so a 5-minute cache is plenty.
+  private epochCache: { value: number; expiresAt: number } | null = null;
   // Same idea for the on-chain DRep registration check, which runs on EVERY login.
   // A 60s TTL keeps role recognition fresh while collapsing repeated logins of the
   // same DRep into one Koios call (the test suite alone logs in ~10 personas many
@@ -185,10 +193,11 @@ export class CardanoQueryService {
   /** §22.4 — DRep registration + active + voting power straight from db-sync,
    *  matched by key hash (db-sync's drep_hash.view is CIP-105, our ids are
    *  CIP-129, so we convert id → key hash). Mirrors Koios /drep_info semantics:
-   *  registered = has a live registration cert AND not expired (active_until ≥ tip epoch). */
+   *  registered = latest cert is a registration/update (not a dereg), independent of the activity
+   *  window; active = registered AND not expired (active_until ≥ tip epoch). */
   private async verifyDRepsViaDbSync(pool: Pool, drepIds: string[]): Promise<Map<string, DRepStatus>> {
     const out = new Map<string, DRepStatus>(
-      drepIds.map((id) => [id, { registered: false, keyHashHex: null, amountLovelace: 0n }]),
+      drepIds.map((id) => [id, { registered: false, active: false, keyHashHex: null, amountLovelace: 0n }]),
     );
     const khToId = new Map<string, string>();
     for (const id of drepIds) {
@@ -221,8 +230,10 @@ export class CardanoQueryService {
       // A registered DRep is active unless it carries an explicit expiry epoch in
       // the past. No drep_distr row (active_until null) ⇒ recently registered / no
       // delegated stake ⇒ still active (matches Koios, which keeps it registered).
-      const active = r.active_until == null || (r.cur != null && Number(r.active_until) >= Number(r.cur));
-      out.set(id, { registered: !!r.registered && active, keyHashHex: r.kh, amountLovelace: BigInt(r.amount ?? '0') });
+      const notLapsed = r.active_until == null || (r.cur != null && Number(r.active_until) >= Number(r.cur));
+      // `registered` = latest cert is a registration/update (not a dereg), independent of the
+      // activity window; `active` additionally requires the window has not lapsed.
+      out.set(id, { registered: !!r.registered, active: !!r.registered && notLapsed, keyHashHex: r.kh, amountLovelace: BigInt(r.amount ?? '0') });
     }
     return out;
   }
@@ -654,6 +665,35 @@ export class CardanoQueryService {
    * expects. db-sync when configured (no rate limit), else Koios. The tx-building
    * path uses this so a Koios 429 doesn't block on-chain anchoring/sweeps.
    */
+  /** The current on-chain epoch — the stake-distribution snapshot DRep voting power is active for.
+   *  Used to label the displayed voting power ("active voting power, epoch N"). Cached 5 min;
+   *  degrades to the last known value (or 0) if every source is unreachable. */
+  async currentEpoch(): Promise<number> {
+    if (this.epochCache && this.epochCache.expiresAt > Date.now()) return this.epochCache.value;
+    try {
+      const n = await this.fromSources('currentEpoch', {
+        koios: async () => {
+          const r = await this.koiosFetch(`/tip`, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) throw new Error(`koios /tip: ${r.status}`);
+          return Number(((await r.json()) as { epoch_no?: number }[])[0]?.epoch_no ?? 0);
+        },
+        blockfrost: async () => {
+          const r = await this.blockfrostFetch(`/epochs/latest`, { signal: AbortSignal.timeout(10000) });
+          if (!r.ok) throw new Error(`Blockfrost /epochs/latest ${r.status}`);
+          return Number(((await r.json()) as { epoch?: number }).epoch ?? 0);
+        },
+        dbsync: async () => {
+          const { rows } = await this.dbsync()!.query<{ e: number }>(`SELECT max(epoch_no) AS e FROM block`);
+          return Number(rows[0]?.e ?? 0);
+        },
+      });
+      this.epochCache = { value: n, expiresAt: Date.now() + 5 * 60 * 1000 };
+      return n;
+    } catch {
+      return this.epochCache?.value ?? 0;
+    }
+  }
+
   async epochParams(): Promise<Record<string, string | number>> {
     return this.fromSources('epochParams', {
       koios: async () => {
@@ -935,7 +975,7 @@ export class CardanoQueryService {
   /** For each bech32 drep id: is it a registered on-chain DRep, and its key hash. */
   async verifyDReps(drepIds: string[]): Promise<Map<string, DRepStatus>> {
     const out = new Map<string, DRepStatus>(
-      drepIds.map((id) => [id, { registered: false, keyHashHex: null, amountLovelace: 0n }]),
+      drepIds.map((id) => [id, { registered: false, active: false, keyHashHex: null, amountLovelace: 0n }]),
     );
     if (drepIds.length === 0) return out;
 
@@ -958,7 +998,7 @@ export class CardanoQueryService {
         dbsync: () => this.verifyDRepsViaDbSync(this.dbsync()!, misses),
       });
       for (const id of misses) {
-        const v = resolved.get(id) ?? { registered: false, keyHashHex: null, amountLovelace: 0n };
+        const v = resolved.get(id) ?? { registered: false, active: false, keyHashHex: null, amountLovelace: 0n };
         out.set(id, v);
         // Cache every resolved miss — including ids omitted (left not-registered) so we don't
         // re-query unknown DReps each login.
@@ -976,7 +1016,7 @@ export class CardanoQueryService {
    *  ordered fallback moves on. Matches by key hash (CIP-105/129 agnostic). */
   private async verifyDRepsViaKoios(misses: string[]): Promise<Map<string, DRepStatus>> {
     const out = new Map<string, DRepStatus>(
-      misses.map((id) => [id, { registered: false, keyHashHex: null, amountLovelace: 0n }]),
+      misses.map((id) => [id, { registered: false, active: false, keyHashHex: null, amountLovelace: 0n }]),
     );
     // Koios's public tier has intermittent 5xx blips; this runs on every login, so retry a few
     // times with backoff — a transient blip should never deny a board member their role.
@@ -1014,10 +1054,13 @@ export class CardanoQueryService {
     for (const r of rows) {
       const id = idForRow(r);
       if (!id) continue;
-      const registered = r.drep_status === 'registered' && r.active === true;
+      // `registered` = has a live registration (drep_status), regardless of the activity window.
+      // `active` additionally requires Koios's `active` (its activity window has not lapsed).
+      const registered = r.drep_status === 'registered';
+      const active = registered && r.active === true;
       let amountLovelace = 0n;
       try { amountLovelace = r.amount ? BigInt(r.amount) : 0n; } catch { /* leave 0 */ }
-      out.set(id, { registered, keyHashHex: r.hex, amountLovelace });
+      out.set(id, { registered, active, keyHashHex: r.hex, amountLovelace });
     }
     return out;
   }
@@ -1027,7 +1070,7 @@ export class CardanoQueryService {
    *  !expired) so a DRep is recognised identically whichever source answers. */
   private async verifyDRepsViaBlockfrost(misses: string[]): Promise<Map<string, DRepStatus>> {
     const out = new Map<string, DRepStatus>(
-      misses.map((id) => [id, { registered: false, keyHashHex: null, amountLovelace: 0n }]),
+      misses.map((id) => [id, { registered: false, active: false, keyHashHex: null, amountLovelace: 0n }]),
     );
     await Promise.all(misses.map(async (id) => {
       const r = await this.blockfrostFetch(`/governance/dreps/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15000) });

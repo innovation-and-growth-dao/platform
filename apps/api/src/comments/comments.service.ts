@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { canCommentWith } from '../common/comment-audience';
 
 const EDIT_WINDOW_MS = 5 * 60 * 1000; // §20.1 — editable for 5 minutes after posting
 
@@ -93,8 +94,13 @@ export class CommentsService {
   }
 
   async create(userId: string, proposalId: string, contentMd: string, parentId?: string) {
-    const proposal = await this.prisma.proposal.findUnique({ where: { id: proposalId }, select: { id: true } });
+    const proposal = await this.prisma.proposal.findUnique({ where: { id: proposalId }, select: { id: true, commentAudience: true } });
     if (!proposal) throw new NotFoundException('proposal not found');
+    // §30 — a document proposal may restrict who can comment (BOARD | MEMBERS | EVERYONE; legacy
+    // DREPS → MEMBERS, ANY_WALLET/null → EVERYONE). The shared resolver enforces the chosen tier.
+    if (!(await canCommentWith(this.prisma, userId, proposal.commentAudience))) {
+      throw new ForbiddenException('you are not allowed to comment on this document');
+    }
     if (parentId) {
       const parent = await this.prisma.comment.findUnique({ where: { id: parentId } });
       if (!parent || parent.proposalId !== proposalId) throw new BadRequestException('parent comment not found on this proposal');

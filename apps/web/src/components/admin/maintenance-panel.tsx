@@ -44,9 +44,9 @@ export function MaintenancePanel() {
   const enabled = state?.enabled ?? false;
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
+    <section className="rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-200">Maintenance mode</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-800 dark:text-slate-200">Maintenance mode</h2>
         <span
           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
             enabled ? 'bg-amber-500/15 text-amber-300' : 'bg-emerald-500/15 text-emerald-300'
@@ -57,10 +57,10 @@ export function MaintenancePanel() {
         </span>
       </div>
 
-      <p className="mt-2 text-xs text-slate-300">
+      <p className="mt-2 text-xs text-neutral-700 dark:text-slate-300">
         Shows every visitor a &ldquo;Short maintenance mode&rdquo; page while you make changes. The admin panel
         keeps working, so you can switch it back off from here. {enabled && state?.since ? (
-          <span className="text-slate-400">Enabled {fmtDateTime(state.since)}.</span>
+          <span className="text-neutral-500 dark:text-slate-400">Enabled {fmtDateTime(state.since)}.</span>
         ) : null}
       </p>
 
@@ -85,7 +85,7 @@ export function MaintenancePanel() {
         <button
           disabled={busy}
           onClick={() => void load()}
-          className="rounded border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-neutral-300 dark:border-slate-700 px-2.5 py-1 text-xs text-neutral-700 dark:text-slate-300 hover:bg-neutral-100 dark:hover:bg-slate-800 disabled:opacity-40"
         >
           Refresh
         </button>

@@ -502,6 +502,12 @@ model Proposal {
   deliveryRemindedAt DateTime? @map("delivery_reminded_at") @db.Timestamptz(6)
   pollOptions   Json?     @map("poll_options")
   thresholdKind String?   @map("threshold_kind")
+  // §30 — "Document for public comment": who may post comments — DREPS (registered DReps only) or
+  // ANY_WALLET (anyone signed in with a wallet). Null = the default open behaviour (any signed-in user).
+  commentAudience String?  @map("comment_audience")
+  // §30 — who may edit the document + its attachments while it is in DRAFT/COMMENT — PROPOSER (the
+  // author only) or PROPOSER_BOARD (author + board). Null = proposer only. Locked once voting opens.
+  docEditableBy String?    @map("doc_editable_by")
   // §10 — PUBLIC by default; PRIVATE makes an internal proposal visible + votable to board only.
   isPrivate     Boolean   @default(false) @map("is_private")
   // §14 — board-member election: an INSTRUCTIVE internal proposal whose 5 actors are the
@@ -568,10 +574,34 @@ model Proposal {
   stopFundings   StopFundingProposal[]
   ruleDocument   RuleDocument?      @relation("RuleDocProposals", fields: [ruleDocumentId], references: [id])
   decision       Decision?          @relation("DecisionProposals", fields: [decisionId], references: [id])
+  attachments    ProposalAttachment[]
 
   @@index([roundId, status])
   @@index([type, status])
   @@map("proposal")
+}
+
+// §30 — files/links attached to a "document for public comment" internal proposal. A proposal can
+// carry several: UPLOAD (a PDF/DOCX/MD/TXT stored as a base64 data URL + extracted text) or LINK (an
+// external/Google-Drive URL; we try to fetch + extract text too). Editable while the proposal is in
+// DRAFT/COMMENT; frozen once voting opens.
+model ProposalAttachment {
+  id            String   @id @default(uuid()) @db.Uuid
+  proposalId    String   @map("proposal_id") @db.Uuid
+  source        String // 'UPLOAD' | 'LINK'
+  title         String?
+  sourceUrl     String?  @map("source_url") // when LINK
+  fileName      String?  @map("file_name") // when UPLOAD
+  mimeType      String?  @map("mime_type")
+  fileDataUrl   String?  @map("file_data_url") @db.Text // base64 data URL of the original (UPLOAD)
+  extractedText String   @default("") @map("extracted_text") @db.Text
+  sortIdx       Int      @default(0) @map("sort_idx")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId, sortIdx])
+  @@map("proposal_attachment")
 }
 
 // §12 — a submission-fee settlement created when an ACTIVE proposal's budget changes:
@@ -1561,14 +1591,40 @@ model RuleDocument {
   owner       AppUser   @relation("RuleDocOwner", fields: [ownerUserId], references: [id])
   publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
   expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6) // §27 — null = never expires
+  // §27 — who may comment while open for feedback: BOARD | MEMBERS (board + DReps + experts) | EVERYONE.
+  commentAudience String @default("MEMBERS") @map("comment_audience")
+  // §27 — who may edit while PRIVATE/DRAFT: PROPOSER | PROPOSER_BOARD.
+  docEditableBy   String @default("PROPOSER") @map("doc_editable_by")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  proposals Proposal[]            @relation("RuleDocProposals")
-  comments  RuleDocumentComment[]
+  proposals   Proposal[]               @relation("RuleDocProposals")
+  comments    RuleDocumentComment[]
+  attachments RuleDocumentAttachment[]
 
   @@index([status])
   @@map("rule_document")
+}
+
+// §27 — supporting files / external links on a rule document (mirrors ProposalAttachment). Not part
+// of the anchored content hash (sha256 of contentMd) — import a link into the body to freeze it.
+model RuleDocumentAttachment {
+  id            String   @id @default(uuid()) @db.Uuid
+  documentId    String   @map("document_id") @db.Uuid
+  source        String // 'UPLOAD' | 'LINK'
+  title         String?
+  sourceUrl     String?  @map("source_url")
+  fileName      String?  @map("file_name")
+  mimeType      String?  @map("mime_type")
+  fileDataUrl   String?  @map("file_data_url") @db.Text
+  extractedText String   @default("") @map("extracted_text") @db.Text
+  sortIdx       Int      @default(0) @map("sort_idx")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  document RuleDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, sortIdx])
+  @@map("rule_document_attachment")
 }
 
 // §27 — on-platform feedback on a rule document while it is being iterated (DRAFT). One level of replies.

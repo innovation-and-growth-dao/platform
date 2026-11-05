@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { drepKeyHashFromId } from '@drep-dao/cardano';
+import { PLATFORM_CONFIG_DEFAULTS } from '@drep-dao/shared';
 import { Prisma } from '@drep-dao/db';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -12,7 +13,6 @@ import { CardanoQueryService } from '../cardano/cardano-query.service';
 import { AdminAuditService } from './admin-audit.service';
 
 const PROPOSED_KEY = 'admin:genesis:proposed';
-const MAX_BOARD = 5;
 
 interface FoundingMember {
   name: string;
@@ -139,15 +139,23 @@ export class GenesisService {
     return statuses;
   }
 
+  /** §14/§17 — configured number of board seats (platform param BOARD_SIZE, default 5). */
+  async boardSize(): Promise<number> {
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: 'BOARD_SIZE' } }).catch(() => null);
+    const n = row && typeof row.value === 'number' ? Number(row.value) : PLATFORM_CONFIG_DEFAULTS.BOARD_SIZE;
+    return Number.isInteger(n) && n >= 1 && n <= 15 ? n : PLATFORM_CONFIG_DEFAULTS.BOARD_SIZE;
+  }
+
   async getState() {
     const state = await this.ensureState();
     const seats = await this.prisma.boardSeat.findMany({ where: { removedAt: null }, orderBy: { addedAt: 'asc' } });
     const proposedRaw = await this.redis.client.get(PROPOSED_KEY);
     const proposed = proposedRaw ? (JSON.parse(proposedRaw) as FoundingMember[]) : null;
+    const maxBoard = await this.boardSize();
     return {
       boardCount: seats.length,
-      maxBoard: MAX_BOARD,
-      canAddMore: seats.length < MAX_BOARD,
+      maxBoard,
+      canAddMore: seats.length < maxBoard,
       board: seats.map((s) => ({ displayName: s.displayName, drepId: s.drepId })),
       genesisApprovedAt: state.genesisApprovedAt,
       maintenanceMode: state.maintenanceMode,
@@ -195,6 +203,7 @@ export class GenesisService {
     const statuses = await this.cardano.verifyDReps(members.map((m) => m.drep_id));
 
     const current = await this.prisma.boardSeat.count({ where: { removedAt: null } });
+    const maxBoard = await this.boardSize();
     let seated = 0;
     let skippedFull = 0;
     for (const m of members) {
@@ -202,7 +211,7 @@ export class GenesisService {
       const keyHash = statuses.get(m.drep_id)?.keyHashHex ?? drepKeyHashFromId(m.drep_id);
       const exists = await this.prisma.boardSeat.findFirst({ where: { removedAt: null, drepKeyHash: keyHash } });
       if (exists) continue; // incremental: skip already-seated
-      if (current + seated >= MAX_BOARD) {
+      if (current + seated >= maxBoard) {
         skippedFull++;
         continue; // board full — skip the rest rather than failing the whole op
       }
@@ -229,7 +238,7 @@ export class GenesisService {
       ip,
       userAgent,
     });
-    return { seated, skippedFull, boardCount: current + seated, maxBoard: MAX_BOARD };
+    return { seated, skippedFull, boardCount: current + seated, maxBoard };
   }
 
   async reject(adminId: string) {
@@ -247,8 +256,9 @@ export class GenesisService {
     if (await this.prisma.boardSeat.findFirst({ where: { removedAt: null, drepKeyHash: keyHash } })) {
       throw new ConflictException(`${member.drep_id} is already a board member`);
     }
-    if ((await this.prisma.boardSeat.count({ where: { removedAt: null } })) >= MAX_BOARD) {
-      throw new ConflictException(`board is capped at ${MAX_BOARD} members — remove one first`);
+    const maxBoard = await this.boardSize();
+    if ((await this.prisma.boardSeat.count({ where: { removedAt: null } })) >= maxBoard) {
+      throw new ConflictException(`board is capped at ${maxBoard} members — remove one first`);
     }
 
     await this.prisma.boardSeat.create({

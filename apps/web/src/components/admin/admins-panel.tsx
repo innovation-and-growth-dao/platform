@@ -56,24 +56,24 @@ export function AdminsPanel({ currentAdminId }: { currentAdminId: string }) {
   };
 
   const field =
-    'w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-500';
+    'w-full rounded-md border border-neutral-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-500';
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
+    <section className="rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-slate-400">
           Admins ({admins.filter((a) => a.status === 'ACTIVE').length} active)
         </h2>
         <button
           onClick={() => setInviteOpen((v) => !v)}
-          className="rounded border border-slate-700 px-2 py-1 text-xs hover:bg-slate-800"
+          className="rounded border border-neutral-300 dark:border-slate-700 px-2 py-1 text-xs hover:bg-neutral-100 dark:hover:bg-slate-800"
         >
           {inviteOpen ? 'Cancel' : 'Invite admin'}
         </button>
       </div>
 
       {inviteOpen ? (
-        <form onSubmit={invite} className="mb-3 space-y-2 rounded border border-slate-800 p-3">
+        <form onSubmit={invite} className="mb-3 space-y-2 rounded border border-neutral-200 dark:border-slate-800 p-3">
           <input className={field} placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
           <input className={field} placeholder="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <button
@@ -95,16 +95,16 @@ export function AdminsPanel({ currentAdminId }: { currentAdminId: string }) {
 
       <ul className="space-y-1 text-sm">
         {admins.map((a) => (
-          <li key={a.id} className="flex items-center justify-between rounded border border-slate-800 px-3 py-1.5">
+          <li key={a.id} className="flex items-center justify-between rounded border border-neutral-200 dark:border-slate-800 px-3 py-1.5">
             <span>
-              {a.username} <span className="text-slate-500">· {a.email}</span>
+              {a.username} <span className="text-neutral-400 dark:text-slate-500">· {a.email}</span>
               {a.id === currentAdminId ? <span className="ml-1 text-xs text-amber-400">(you)</span> : null}
             </span>
             <span className="flex items-center gap-2">
-              <span className={a.status === 'ACTIVE' ? 'text-emerald-400' : 'text-slate-500'}>{a.status}</span>
+              <span className={a.status === 'ACTIVE' ? 'text-emerald-400' : 'text-neutral-400 dark:text-slate-500'}>{a.status}</span>
               {a.status === 'ACTIVE' ? (
                 <>
-                  <button onClick={() => act(a.id, 'disable')} className="rounded border border-slate-700 px-2 py-0.5 text-xs hover:bg-slate-800">
+                  <button onClick={() => act(a.id, 'disable')} className="rounded border border-neutral-300 dark:border-slate-700 px-2 py-0.5 text-xs hover:bg-neutral-100 dark:hover:bg-slate-800">
                     Disable
                   </button>
                   <button onClick={() => act(a.id, 'remove')} className="rounded border border-red-700 px-2 py-0.5 text-xs text-red-300 hover:bg-red-950">
@@ -113,7 +113,7 @@ export function AdminsPanel({ currentAdminId }: { currentAdminId: string }) {
                   <button
                     onClick={() => void adminApi.accounts.passwordReset(a.id).then((r) => setResetUrl(`${window.location.origin}/admin/reset-password?token=${r.token}`)).catch((e) => setError(e instanceof Error ? e.message : 'failed'))}
                     title="Generate a one-time password-reset link (1 hour)"
-                    className="rounded border border-slate-700 px-2 py-0.5 text-xs hover:bg-slate-800"
+                    className="rounded border border-neutral-300 dark:border-slate-700 px-2 py-0.5 text-xs hover:bg-neutral-100 dark:hover:bg-slate-800"
                   >
                     Reset password
                   </button>
@@ -131,13 +131,13 @@ export function AdminsPanel({ currentAdminId }: { currentAdminId: string }) {
       ) : null}
 
       {/* §18.6 — switch ALL admins: invite a fresh roster; current admins auto-disable when the last invite is accepted. */}
-      <div className="mt-4 border-t border-slate-800 pt-3">
+      <div className="mt-4 border-t border-neutral-200 dark:border-slate-800 pt-3">
         <button onClick={() => setSwitchOpen((v) => !v)} className="rounded border border-red-800 px-2 py-1 text-xs text-red-300 hover:bg-red-950">
           {switchOpen ? 'Cancel switch-all' : 'Switch all admins (rotation)'}
         </button>
         {switchOpen ? (
-          <div className="mt-2 space-y-2 rounded border border-slate-800 p-3 text-xs">
-            <p className="text-slate-400">One <code>username,email</code> per line. Every current admin is disabled automatically once the LAST new admin accepts their invite. Single audit event.</p>
+          <div className="mt-2 space-y-2 rounded border border-neutral-200 dark:border-slate-800 p-3 text-xs">
+            <p className="text-neutral-500 dark:text-slate-400">One <code>username,email</code> per line. Every current admin is disabled automatically once the LAST new admin accepts their invite. Single audit event.</p>
             <textarea value={switchText} onChange={(e) => setSwitchText(e.target.value)} rows={3} placeholder={'alice2,alice@example.org\nbob2,bob@example.org'} className={field} />
             <button
               onClick={() => {

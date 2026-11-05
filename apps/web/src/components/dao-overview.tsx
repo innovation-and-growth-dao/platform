@@ -94,6 +94,12 @@ export function DaoOverview() {
           ) : null}
         </div>
       </div>
+      {/* §4 — proof the displayed power is the epoch's ACTIVE snapshot (not a live/next-epoch figure). */}
+      {members && members.length > 0 && (members.find((m) => m.votingPowerEpoch > 0)?.votingPowerEpoch ?? 0) > 0 ? (
+        <p className="mt-1 text-xs text-neutral-500">
+          {t('On-chain voting power is the active snapshot for epoch {n}; recent delegations become active at the next epoch boundary.').replace('{n}', String(members.find((m) => m.votingPowerEpoch > 0)?.votingPowerEpoch ?? 0))}
+        </p>
+      ) : null}
 
       {/* Linear submenu: DAO members | Experts. */}
       <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">

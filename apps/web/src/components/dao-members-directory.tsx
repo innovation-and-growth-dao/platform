@@ -285,7 +285,8 @@ function Stats({ d }: { d: DaoMemberDetail }) {
   const t = useT();
   return (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3 lg:grid-cols-4">
-      <Stat label={t('Voting power')} value={`${d.votingPowerAda.toLocaleString()} ₳`} />
+      {/* §4 — label the active-voting-power epoch as proof the figure is that epoch's snapshot. */}
+      <Stat label={d.votingPowerEpoch > 0 ? `${t('Voting power')} · ${t('epoch')} ${d.votingPowerEpoch}` : t('Voting power')} value={`${d.votingPowerAda.toLocaleString()} ₳`} />
       <Stat label={t('Delegators')} value={d.delegators.toLocaleString()} />
       <Stat label={t('Merit')} value={d.merit.toLocaleString()} />
       <Stat label={t('Adjusted power')} value={d.adjustedPower.toFixed(2)} />

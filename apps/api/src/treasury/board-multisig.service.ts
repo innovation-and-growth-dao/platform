@@ -36,7 +36,6 @@ const LOVELACE = 1_000_000;
 @Injectable()
 export class BoardMultisigService {
   private readonly networkId: number;
-  private readonly threshold = 3; // 3-of-N for the time being
 
   constructor(
     private readonly prisma: PrismaService,
@@ -47,6 +46,17 @@ export class BoardMultisigService {
   ) {
     const net = (this.config.get<string>('CARDANO_NETWORK') ?? 'Preprod').trim();
     this.networkId = net === 'Mainnet' ? 1 : 0;
+  }
+
+  /** §15 — the signing threshold M for an N-key board. Reads the MULTISIG_THRESHOLD platform param:
+   *  0 (default) = automatic MAJORITY of the seated keys (3-of-5, 2-of-3, …); a positive value forces
+   *  an explicit M, clamped to 1…N. Applied when the multisig is (re-)assembled. */
+  async configuredThreshold(n: number): Promise<number> {
+    if (n <= 0) return 0;
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: 'MULTISIG_THRESHOLD' } }).catch(() => null);
+    const forced = row && typeof row.value === 'number' ? Number(row.value) : 0;
+    const t = forced > 0 ? forced : Math.floor(n / 2) + 1; // majority
+    return Math.max(1, Math.min(t, n));
   }
 
   /** Canonical challenge message the wallet signs to prove possession of
@@ -182,8 +192,15 @@ export class BoardMultisigService {
     const migratedAtByConfig = new Map<string, Date | null>();
     for (const m of migrationsDone) if (m.fromConfigId && !migratedAtByConfig.has(m.fromConfigId)) migratedAtByConfig.set(m.fromConfigId, m.paidAt);
 
+    // §15 — the threshold the CURRENT board would assemble to (majority / configured), plus a lookup
+    // of each stored config's own threshold so a migration shows how many of the OLD board must sign.
+    const statusThreshold = await this.configuredThreshold(seats.length);
+    const cfgThresholdById = new Map<string, number>();
+    if (active) cfgThresholdById.set(active.id, active.threshold);
+    for (const h of hist) cfgThresholdById.set(h.id, h.threshold);
+
     return {
-      threshold: this.threshold,
+      threshold: statusThreshold,
       total: seats.length,
       submitted,
       allSubmitted,
@@ -236,7 +253,7 @@ export class BoardMultisigService {
         amountAda: a.amountAda ? Number(a.amountAda) / LOVELACE : null,
         status: a.status,
         approvals: a.signatures.length,
-        threshold: this.threshold,
+        threshold: (a.fromConfigId && cfgThresholdById.get(a.fromConfigId)) || statusThreshold,
         txHash: a.txHash,
         createdAt: a.createdAt,
       })),
@@ -321,7 +338,8 @@ export class BoardMultisigService {
     const signers = (resolved as { drepId: string; keyHash: string; address: string | null }[]).map((r) => ({ drep: r.drepId, address: r.address ?? '' }));
 
     const keyHashes = (resolved as { keyHash: string }[]).map((r) => r.keyHash.toLowerCase()).sort();
-    const built = this.buildNativeScript(keyHashes);
+    const required = await this.configuredThreshold(keyHashes.length);
+    const built = this.buildNativeScript(keyHashes, required);
 
     const active = await this.active();
     if (active && active.scriptHash === built.scriptHash) return active; // no-op
@@ -336,7 +354,7 @@ export class BoardMultisigService {
           scriptJson: built.scriptJson,
           scriptHash: built.scriptHash,
           bech32Address: built.bech32Address,
-          threshold: Math.min(this.threshold, keyHashes.length),
+          threshold: required,
           totalKeys: keyHashes.length,
         },
       });
@@ -468,7 +486,8 @@ export class BoardMultisigService {
   /** Hash-only check (used by status() to detect rotation). */
   private async computeScriptHashFromKeyHashes(keyHashes: string[]): Promise<string | null> {
     if (keyHashes.length === 0) return null;
-    return this.buildNativeScript(keyHashes).scriptHash;
+    const required = await this.configuredThreshold(keyHashes.length);
+    return this.buildNativeScript(keyHashes, required).scriptHash;
   }
 
   /** §15 — 3-of-N native script: at-least 3 of the submitted board keys
@@ -476,13 +495,12 @@ export class BoardMultisigService {
    *  MultisigBroadcastService: phase 1 picks WHICH 3 sign, the tx body
    *  declares those 3 in required_signers, and the script's NOfK clause
    *  is satisfied by their 3 witnesses. */
-  private buildNativeScript(keyHashes: string[]) {
+  private buildNativeScript(keyHashes: string[], required: number) {
     const scripts = CSL.NativeScripts.new();
     for (const kh of keyHashes) {
       const ed = CSL.Ed25519KeyHash.from_hex(kh);
       scripts.add(CSL.NativeScript.new_script_pubkey(CSL.ScriptPubkey.new(ed)));
     }
-    const required = Math.min(this.threshold, keyHashes.length);
     const nofk = CSL.ScriptNOfK.new(required, scripts);
     const top = CSL.NativeScript.new_script_n_of_k(nofk);
     const scriptHashObj = top.hash();

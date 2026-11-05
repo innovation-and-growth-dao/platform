@@ -33,7 +33,7 @@ export class PublicOverviewController {
 
   private async build() {
     const network = this.config.get<string>('CARDANO_NETWORK') ?? 'Preprod';
-    const [votingDReps, experts, propGroups, internalGroups, boardSeats, activeRound, admissionRow] = await Promise.all([
+    const [votingDReps, experts, propGroups, internalGroups, boardSeats, activeRound, admissionRow, telegramRow] = await Promise.all([
       this.prisma.drep.count({ where: { status: 'ADMITTED' } }),
       this.prisma.expert.count({ where: { approvedByBoard: true } }),
       this.prisma.proposal.groupBy({ by: ['status'], where: { type: 'FUNDING' }, _count: { _all: true } }),
@@ -41,7 +41,10 @@ export class PublicOverviewController {
       this.prisma.boardSeat.count({ where: { removedAt: null } }),
       this.rounds.activeRound().catch(() => null),
       this.prisma.platformConfig.findUnique({ where: { key: 'DREP_OPEN_ADMISSION' } }),
+      // Optional community Telegram invite (empty/unset → not shown on the landing).
+      this.prisma.platformConfig.findUnique({ where: { key: 'TELEGRAM_GROUP_URL' } }),
     ]);
+    const telegramUrl = typeof telegramRow?.value === 'string' && telegramRow.value.trim() ? telegramRow.value.trim() : null;
 
     const count = (s: string) => propGroups.find((g) => g.status === s)?._count._all ?? 0;
     const approved = count('APPROVED') + count('COMPLETE');
@@ -72,6 +75,7 @@ export class PublicOverviewController {
     return {
       network,
       admissionOpen,
+      telegramUrl,
       treasuryBalanceAda,
       members: { votingDReps, experts },
       board: { seats: boardSeats, elected: boardSeats > 0 },

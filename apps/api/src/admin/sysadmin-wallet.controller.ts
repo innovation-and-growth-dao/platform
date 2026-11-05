@@ -42,10 +42,11 @@ export class SysadminWalletController {
   }
 
   @Patch('anchor-config')
-  async setAnchorConfig(@CurrentAdmin() admin: AdminIdentity, @Body() dto: { sweepHours: number }) {
-    const sweepHours = await this.anchor.setSweepHours(Number(dto.sweepHours));
-    await this.audit.log({ adminId: admin.adminId, action: 'wallet.anchor-config', payload: { sweepHours } });
-    return { sweepHours };
+  async setAnchorConfig(@CurrentAdmin() admin: AdminIdentity, @Body() dto: { mode?: 'scheduled' | 'immediate'; sweepHours?: number }) {
+    const mode = dto.mode !== undefined ? await this.anchor.setAnchorMode(dto.mode) : await this.anchor.getAnchorMode();
+    const sweepHours = dto.sweepHours !== undefined ? await this.anchor.setSweepHours(Number(dto.sweepHours)) : await this.anchor.getSweepHours();
+    await this.audit.log({ adminId: admin.adminId, action: 'wallet.anchor-config', payload: { mode, sweepHours } });
+    return { mode, sweepHours };
   }
 
   @UseGuards(StepUpGuard)

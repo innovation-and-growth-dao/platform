@@ -31,7 +31,7 @@ import { WalletStatusBanner } from './wallet-status-banner';
 import { useTodoCounts, todoTotal } from '@/lib/use-todo-counts';
 import { HealthBadge } from '@/app/health-badge';
 
-type View = 'overview' | 'members' | 'submitters' | 'experts' | 'me' | 'rounds' | 'proposals' | 'internal' | 'rules' | 'decisions' | 'proofs' | 'treasury' | 'setup';
+type View = 'overview' | 'members' | 'submitters' | 'experts' | 'me' | 'rounds' | 'proposals' | 'internal' | 'rules' | 'decisions' | 'proofs' | 'treasury' | 'setup' | 'landing';
 const NAV: { key: View; label: string; icon: string; boardOnly?: boolean }[] = [
   // §2 — "My area" first: it is the member's home (to-dos, profile, proposals).
   { key: 'me', label: 'My area', icon: 'user' },
@@ -57,7 +57,9 @@ export function HomeShell() {
   const { get, setParams } = useUrlNav();
   // The active menu view + an optionally-open proposal come from the URL, so every screen
   // (and any open proposal) has its own shareable link. Switching the menu clears submenu state.
-  const view = (NAV.some((n) => n.key === get('view')) ? get('view') : 'overview') as View;
+  // 'landing' is a valid view (the public front page, reachable while logged in) even though it is
+  // not a menu entry, so accept it explicitly alongside the NAV keys.
+  const view = (NAV.some((n) => n.key === get('view')) || get('view') === 'landing' ? get('view') : 'overview') as View;
   const openProposal = get('proposal');
   // Switching the menu (or signing in as a different user) clears all sub-navigation —
   // tab inside My-area, opened round / funding proposal, opened internal proposal (`ip`).
@@ -203,7 +205,15 @@ export function HomeShell() {
       <DrepVerifyPrompt />
       {/* Left: title + menu only. */}
       <aside className="lg:w-56 lg:shrink-0">
-        <h1 className="mb-3 text-xl font-bold tracking-tight lg:mb-4">{brand.name}</h1>
+        {/* Brand → the public landing page (a way back to the front page once logged in). */}
+        <button
+          onClick={() => setView('landing')}
+          title={t('Landing page')}
+          className="mb-3 flex items-center gap-2 text-xl font-bold tracking-tight hover:opacity-80 lg:mb-4"
+        >
+          <img src={brand.icon} alt="" className="h-6 w-6" />
+          {brand.name}
+        </button>
         <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-col lg:gap-0 lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">
           {nav.map((n) => {
             // §20 — mirror the in-area to-do count next to "My area" so users
@@ -244,6 +254,8 @@ export function HomeShell() {
           <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
             <ProposalDetail id={openProposal} onBack={() => setParams({ proposal: null })} />
           </section>
+        ) : view === 'landing' ? (
+          <PublicLanding onConnect={() => setView('me')} onExplore={() => setView('proposals')} />
         ) : view === 'overview' ? (
           <DaoOverview />
         ) : view === 'submitters' ? (

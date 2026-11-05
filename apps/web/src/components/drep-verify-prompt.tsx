@@ -13,23 +13,27 @@ const DISMISS_KEY = 'drepdao.drepVerifyPrompt.dismissed';
 
 export function DrepVerifyPrompt() {
   const t = useT();
-  const { profile, detectDRepId, proveDrepKey } = useAuth();
+  const { profile, detectDRepRegistered, proveDrepKey } = useAuth();
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const checked = useRef(false);
 
   const stakeKey = profile?.user?.stakeKeyHash ?? null;
   const proven = profile?.onchainDrep.proven ?? false;
+  const proofRequired = profile?.onchainDrep.proofRequired ?? false;
 
   useEffect(() => {
-    if (checked.current || !profile || proven || !stakeKey) return;
+    // Only nudge when a proof is actually REQUIRED — in auto-detect mode the DRep is already recognised.
+    if (checked.current || !profile || !proofRequired || proven || !stakeKey) return;
     checked.current = true;
     void (async () => {
       if (typeof window !== 'undefined' && window.localStorage.getItem(`${DISMISS_KEY}:${stakeKey}`)) return;
-      const drepId = await detectDRepId().catch(() => null); // only nudge wallets that expose a DRep key
-      if (drepId) setOpen(true);
+      // Only nudge REGISTERED DReps — CIP-95 wallets derive a DRep key for every account, so a plain
+      // ADA holder (non-DRep) must not be asked to prove one.
+      const registered = await detectDRepRegistered().catch(() => false);
+      if (registered) setOpen(true);
     })();
-  }, [profile, proven, stakeKey, detectDRepId]);
+  }, [profile, proven, proofRequired, stakeKey, detectDRepRegistered]);
 
   if (!open) return null;
 

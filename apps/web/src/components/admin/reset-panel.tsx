@@ -42,7 +42,7 @@ export function ResetPanel({ onReset }: { onReset?: () => void }) {
   return (
     <section className="rounded-lg border border-red-700/60 bg-red-950/30 p-4">
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-red-300">Danger zone — reset DAO state</h2>
-      <p className="text-xs text-slate-300">
+      <p className="text-xs text-neutral-700 dark:text-slate-300">
         Wipes proposals, rounds, board seats, the multisig config + collected keys, all votes, anchor history,
         rewards, and stop-funding records. <strong>Keeps</strong> admin accounts, the admin audit log, the anchor
         hot-wallet seed, and governance configuration. After this you can re-upload the founding-board file and

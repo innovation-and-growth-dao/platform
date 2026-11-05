@@ -32,7 +32,7 @@ function AcceptInviteInner() {
   };
 
   const field =
-    'w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-500';
+    'w-full rounded-md border border-neutral-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-500';
 
   if (!token) return <p className="text-sm text-red-400">Missing invitation token.</p>;
 
@@ -41,14 +41,14 @@ function AcceptInviteInner() {
       <div className="mx-auto max-w-sm space-y-4">
         <h1 className="text-xl font-bold text-emerald-400">Account created ✓</h1>
         <div>
-          <p className="text-sm text-slate-300">Scan this in your authenticator app:</p>
+          <p className="text-sm text-neutral-700 dark:text-slate-300">Scan this in your authenticator app:</p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={result.totpQrDataUrl} alt="2FA QR" className="mt-2 rounded bg-white p-2" width={180} height={180} />
-          <p className="mt-1 break-all font-mono text-xs text-slate-400">secret: {result.totpBase32}</p>
+          <p className="mt-1 break-all font-mono text-xs text-neutral-500 dark:text-slate-400">secret: {result.totpBase32}</p>
         </div>
         <div>
           <p className="text-sm font-medium text-amber-300">Recovery codes (save now — shown once):</p>
-          <ul className="mt-1 grid grid-cols-2 gap-1 font-mono text-xs text-slate-200">
+          <ul className="mt-1 grid grid-cols-2 gap-1 font-mono text-xs text-neutral-800 dark:text-slate-200">
             {result.recoveryCodes.map((c) => (
               <li key={c}>{c}</li>
             ))}
@@ -64,7 +64,7 @@ function AcceptInviteInner() {
   return (
     <div className="mx-auto max-w-sm">
       <h1 className="text-xl font-bold">Accept admin invitation</h1>
-      <p className="mt-1 text-sm text-slate-400">Set your password to activate the account.</p>
+      <p className="mt-1 text-sm text-neutral-500 dark:text-slate-400">Set your password to activate the account.</p>
       <form onSubmit={submit} className="mt-6 space-y-3">
         <input className={field} type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
         <input className={field} type="password" placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
@@ -79,7 +79,7 @@ function AcceptInviteInner() {
 
 export default function AcceptInvitePage() {
   return (
-    <Suspense fallback={<p className="text-sm text-slate-400">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-neutral-500 dark:text-slate-400">Loading…</p>}>
       <AcceptInviteInner />
     </Suspense>
   );

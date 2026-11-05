@@ -5,7 +5,8 @@
  */
 
 export interface DRepStatusShape {
-  registered: boolean;
+  registered: boolean; // live registration (not retired/deregistered); independent of the activity window
+  active: boolean; // registered AND not expired (activity window not lapsed)
   keyHashHex: string | null;
   amountLovelace: bigint;
 }
@@ -20,10 +21,13 @@ export interface BlockfrostDRepRow {
 }
 
 /**
- * A DRep is "registered" for the platform only if it's a live, non-retired, **non-expired**
- * DRep — the same rule Koios enforces (`drep_status==='registered' && active===true`, where
- * Koios's `active` means "not expired"). Blockfrost splits that into `active` (registered &
- * not retired) + `expired`, so all three must be checked.
+ * `registered` = a live, non-retired registration — matching Koios (`drep_status==='registered'`)
+ * and db-sync (latest cert is a registration, not a dereg). It is INDEPENDENT of the CIP-1694
+ * activity window: a DRep that stops voting goes inactive/expired WITHOUT any certificate but stays
+ * registered. `active` additionally requires not-expired (Koios `active:true`). Blockfrost splits
+ * this as `active` (registered & not retired) + a separate `expired`, so registered = active &
+ * !retired, and active(ours) = registered & !expired. Keeping registration and activity separate
+ * lets the platform recognise a registered-but-inactive DRep instead of rejecting it as "not a DRep".
  *
  * Blockfrost's `hex` includes the CIP-129 header byte (29 bytes / 58 hex chars); Koios/db-sync
  * return the raw 28-byte key hash, so we strip the header for a matching keyHashHex.
@@ -37,8 +41,12 @@ export function blockfrostDrepStatus(row: BlockfrostDRepRow): DRepStatusShape {
   } catch {
     amountLovelace = 0n;
   }
-  const registered = row.active === true && row.retired !== true && row.expired !== true;
-  return { registered, keyHashHex, amountLovelace };
+  // Blockfrost `active` = registered & not retired (does NOT account for expiry); `expired` is
+  // separate. So `registered` (live registration) ignores expiry; `active` additionally requires
+  // not expired — matching Koios (drep_status registered) and db-sync (latest cert is a reg).
+  const registered = row.active === true && row.retired !== true;
+  const active = registered && row.expired !== true;
+  return { registered, active, keyHashHex, amountLovelace };
 }
 
 /** Sum of lovelace across a Blockfrost `amount` array (e.g. address balance), lovelace unit only. */

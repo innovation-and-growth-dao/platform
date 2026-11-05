@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useT } from '@/lib/prefs-context';
 
@@ -9,11 +9,25 @@ import { useT } from '@/lib/prefs-context';
 // so the action is always reachable, not just via the one-time login popup.
 export function DrepVerifyControl({ className }: { className?: string }) {
   const t = useT();
-  const { profile, proveDrepKey } = useAuth();
+  const { profile, proveDrepKey, detectDRepRegistered } = useAuth();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // null = not yet checked. The "Verify" button only applies to REGISTERED DReps — CIP-95 wallets
+  // derive a DRep key for every account, so a plain ADA holder (non-DRep) must not see it.
+  const [registered, setRegistered] = useState<boolean | null>(null);
+
+  const needsCheck = !!profile && profile.onchainDrep.proofRequired && !profile.onchainDrep.proven;
+  useEffect(() => {
+    if (!needsCheck) return;
+    let cancelled = false;
+    detectDRepRegistered().then((r) => !cancelled && setRegistered(r)).catch(() => !cancelled && setRegistered(false));
+    return () => { cancelled = true; };
+  }, [needsCheck, detectDRepRegistered]);
 
   if (!profile) return null;
+  // Auto-detect mode (proof not required): the DRep is recognised at login, so hide the
+  // now-pointless "Verify DRep key" control entirely.
+  if (!profile.onchainDrep.proofRequired) return null;
 
   if (profile.onchainDrep.proven) {
     return (
@@ -22,6 +36,9 @@ export function DrepVerifyControl({ className }: { className?: string }) {
       </div>
     );
   }
+
+  // Unproven: only a REGISTERED DRep is asked to prove their key; everyone else sees nothing.
+  if (registered !== true) return null;
 
   return (
     <div className={`space-y-1 ${className ?? ''}`}>

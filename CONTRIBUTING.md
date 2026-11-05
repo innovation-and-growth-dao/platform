@@ -76,7 +76,8 @@ production with `prisma migrate deploy` (see [docs/DEPLOYMENT.md](docs/DEPLOYMEN
 ## Making a change
 
 1. Branch off the default branch.
-2. Keep changes surgical — every changed line should trace to the stated goal.
+2. Keep changes surgical — every changed line should trace to the stated goal
+   (see [CLAUDE.md](CLAUDE.md) for the working guidelines this repo follows).
 3. Ensure `pnpm typecheck && pnpm test && pnpm build` pass.
 4. Open a pull request describing **what** changed and **why**, and how you
    verified it. Reference any related issue.

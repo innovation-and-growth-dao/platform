@@ -1042,10 +1042,12 @@ export class MilestonesService {
       include: { signatures: { select: { id: true } } },
     });
     if (!a) return null;
+    // §15 — board signatures needed = the active multisig config's stored threshold (2-of-3, 3-of-5, …).
+    const active = await this.prisma.multisigConfig.findFirst({ where: { replacedAt: null }, orderBy: { assembledAt: 'desc' }, select: { threshold: true } });
     return {
       status: a.status,
       approvals: a.signatures.length,
-      threshold: 3, // matches TreasuryService.APPROVAL_THRESHOLD
+      threshold: active?.threshold ?? 3,
       txHash: a.txHash,
       paidAt: a.paidAt,
     };

@@ -14,7 +14,7 @@ export interface UserProfile {
   submitterName: string | null;
   roles: string[];
   /** On-chain DRep identity — source of truth for the DREP role (verified at login). */
-  onchainDrep: { registered: boolean; drepId: string | null; proven?: boolean };
+  onchainDrep: { registered: boolean; drepId: string | null; proven?: boolean; proofRequired?: boolean };
   /** DAO membership (admission) status — separate from on-chain registration. */
   daoMembership: { status: string; admittedAt: string | null } | null;
 }
@@ -67,6 +67,13 @@ export const authApi = {
     request<{ proven: boolean; drepKeyHash: string; profile: UserProfile }>('/auth/drep/verify', {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+  // Whether the wallet's CIP-95 DRep key is a REGISTERED on-chain DRep — decides whether to show the
+  // "Verify DRep key" proof prompt at all (CIP-95 wallets derive a DRep key for every account).
+  drepRegistered: (drepKeyHex: string) =>
+    request<{ registered: boolean }>('/auth/drep/registered', {
+      method: 'POST',
+      body: JSON.stringify({ drepKeyHex }),
     }),
 
   me: () => request<UserProfile>('/auth/me'),
@@ -131,7 +138,8 @@ export interface DaoMember {
   displayName: string;
   image: string | null; // CIP-119 on-chain DRep image, else null (generic avatar)
   isBoard: boolean;
-  votingPowerAda: number; // on-chain DRep voting power (vote delegation), in ADA
+  votingPowerAda: number; // on-chain DRep voting power (vote delegation), in ADA — ACTIVE for votingPowerEpoch
+  votingPowerEpoch: number; // the on-chain epoch this active voting-power snapshot is for (0 if unknown)
   delegators: number; // accounts that delegated their vote to this DRep
   merit: number;
   basePower: number;
@@ -1422,6 +1430,7 @@ export interface PublicConfig {
   submissionFeeAddress: string | null;
   pledgeAddress: string | null;
   anchorMetadataLabel: number;
+  boardSize: number; // §14/§17 — a board-member election must put up exactly this many candidates
   internalThresholds: { default: number; important: number };
   /** §15.3 — true once the board has assembled the on-chain multisig. UI
    *  uses this to gate features that only make sense when the script
@@ -1434,6 +1443,7 @@ export const configApi = { get: () => request<PublicConfig>('/config') };
 export interface PublicOverview {
   network: string;
   admissionOpen: boolean;
+  telegramUrl: string | null; // community Telegram invite; null → the landing hides the invite
   treasuryBalanceAda: number | null;
   members: { votingDReps: number; experts: number };
   board: { seats: number; elected: boolean };
@@ -1912,15 +1922,70 @@ export interface InternalProposalDetail extends InternalProposalSummary {
   votingStartAt: string | null;
   resultFinalizedAt: string | null;
   voters: InternalProposalVoter[]; // who voted how + their rationales
+  docHash: string; // §3 — SHA-256 of title+content (or the frozen rule/decision hash); matches the on-chain anchor
   anchorTxHash: string | null;
   anchorHash: string | null;
+  docAnchorTxHash?: string | null; // §30 — content anchor taken when voting opened on a document
   /** Minimum rationale words required per choice (0 = not required). Internal proposals only. */
   rationaleMinWords: { YES: number; NO: number; ABSTAIN: number };
   /** The viewer's current (live) rationale, shown read-only in the locked vote card. */
   myRationale: string | null;
+  /** §10 — the viewer may push out this proposal's voting deadline (enabled + ACTIVE + permitted). */
+  canExtend: boolean;
+  /** §10 — recorded deadline extensions (each is anchored on-chain), oldest first. */
+  extensions: { fromIso: string | null; toIso: string | null; by: string | null; atIso: string | null; txHash: string | null }[];
   /** §27 RULE_APPROVAL: the targeted rule document + the frozen content hash. */
   rule?: { documentId: string; title: string; documentStatus: string; deleteRequested: boolean; contentHash: string | null } | null;
   decision?: { decisionId: string; title: string; decisionStatus: string; deleteRequested: boolean; contentHash: string | null } | null;
+  /** §30 — "Document for public comment": attachments + who may comment/edit + the viewer's rights. */
+  attachments?: InternalAttachment[];
+  commentAudience?: string | null; // DREPS | ANY_WALLET | null
+  docEditableBy?: string | null; // PROPOSER | PROPOSER_BOARD | null
+  canEditDocument?: boolean;
+  canOpenVoting?: boolean;
+}
+/** §30 — one file/link attached to a document proposal. */
+export interface InternalAttachment {
+  id: string;
+  source: string; // UPLOAD | LINK
+  title: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  sourceUrl: string | null;
+  hasFile: boolean;
+  extractedText: string;
+}
+/** §30 — create/update a document proposal. */
+export interface SaveDocumentInput {
+  title: string;
+  contentMd?: string;
+  commentAudience: string; // DREPS | ANY_WALLET
+  docEditableBy: string; // PROPOSER | PROPOSER_BOARD
+  isPrivate?: boolean;
+  attachments?: AddAttachmentInput[];
+}
+export interface AddAttachmentInput {
+  source: string; // UPLOAD | LINK
+  title?: string;
+  dataUrl?: string; // UPLOAD
+  fileName?: string; // UPLOAD
+  url?: string; // LINK
+}
+/** §30 — open voting on a document: the chosen vote type + its params. */
+export interface OpenVotingInput {
+  internalType: string; // INSTRUCTIVE | INFORMATIVE | POLL | SPENDING
+  votersScope: string;
+  thresholdKind: string;
+  votingType: string;
+  votingEndAt?: string;
+  votingPeriodDays?: number;
+  pollOptions?: string[];
+  pollMultiple?: boolean;
+  actors?: string[];
+  deliveryDate?: string;
+  spendingAmountAda?: number;
+  spendingSourceBucketId?: string;
+  spendingDestAddress?: string;
 }
 export interface CreateInternalInput {
   /** §10.5 SPENDING: amount + destination (+ optional source bucket). */
@@ -1972,6 +2037,9 @@ export const internalProposalsApi = {
     request<InternalProposalDetail>(`/internal-proposals/drafts/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   deleteDraft: (id: string) =>
     request<{ id: string; deleted: boolean }>(`/internal-proposals/drafts/${id}`, { method: 'DELETE' }),
+  // §10 — board member soft-deletes a submitted proposal (kept as DELETED for the record).
+  remove: (id: string) =>
+    request<{ id: string; deleted: boolean }>(`/internal-proposals/${id}`, { method: 'DELETE' }),
   vote: (id: string, input: VoteInternalInput) =>
     request<InternalProposalDetail>(`/internal-proposals/${id}/vote`, { method: 'POST', body: JSON.stringify(input) }),
   installBoard: (id: string) =>
@@ -1979,7 +2047,36 @@ export const internalProposalsApi = {
       `/internal-proposals/${id}/install-board`,
       { method: 'POST' },
     ),
+  extend: (id: string, votingEndAt: string) =>
+    request<InternalProposalDetail>(`/internal-proposals/${id}/extend`, { method: 'POST', body: JSON.stringify({ votingEndAt }) }),
+  // §30 — "Document for public comment".
+  createDocument: (input: SaveDocumentInput) =>
+    request<InternalProposalDetail>('/internal-proposals/document', { method: 'POST', body: JSON.stringify(input) }),
+  updateDocument: (id: string, input: SaveDocumentInput) =>
+    request<InternalProposalDetail>(`/internal-proposals/document/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  addAttachment: (id: string, input: AddAttachmentInput) =>
+    request<InternalProposalDetail>(`/internal-proposals/${id}/attachments`, { method: 'POST', body: JSON.stringify(input) }),
+  removeAttachment: (id: string, attId: string) =>
+    request<InternalProposalDetail>(`/internal-proposals/${id}/attachments/${attId}`, { method: 'DELETE' }),
+  renameAttachment: (id: string, attId: string, title: string) =>
+    request<InternalProposalDetail>(`/internal-proposals/${id}/attachments/${attId}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
+  openVoting: (id: string, input: OpenVotingInput) =>
+    request<InternalProposalDetail>(`/internal-proposals/${id}/open-voting`, { method: 'POST', body: JSON.stringify(input) }),
+  attachmentFile: (id: string, attId: string) =>
+    request<{ fileName: string | null; mimeType: string | null; dataUrl: string }>(`/internal-proposals/${id}/attachments/${attId}/file`),
+  probeLink: (url: string) =>
+    request<LinkProbe>('/internal-proposals/probe-link', { method: 'POST', body: JSON.stringify({ url }) }),
+  fetchLinkText: (url: string) =>
+    request<{ text: string; chars: number }>('/internal-proposals/fetch-link', { method: 'POST', body: JSON.stringify({ url }) }),
 };
+/** §30 — result of probing a link while composing a document (can we fetch + read it?). */
+export interface LinkProbe {
+  ok: boolean;
+  chars: number;
+  mime: string | null;
+  note: string | null;
+  preview: string;
+}
 
 // §13 — merit points + avoid-period ("vacancy") signalling.
 export interface MeritInfo {
@@ -2150,9 +2247,23 @@ export interface RuleDocComment {
   createdAt: string;
   replies?: RuleDocComment[]; // present on top-level comments (one level of threading)
 }
+// §27 — a file/link attached to a rule document (same shape as the §30 document feature).
+export interface RuleAttachment {
+  id: string;
+  source: string; // UPLOAD | LINK
+  title: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  sourceUrl: string | null;
+  hasFile: boolean;
+  extractedText: string;
+}
 export interface RuleDocDetail extends RuleDocSummary {
   contentMd: string;
   contentHash: string; // sha256(content), computed live — verify against this
+  commentAudience: string; // BOARD | MEMBERS | EVERYONE
+  docEditableBy: string; // PROPOSER | PROPOSER_BOARD
+  attachments: RuleAttachment[];
   isOwner: boolean;
   editable: boolean;
   canPropose: boolean;
@@ -2164,9 +2275,9 @@ export const ruleDocumentsApi = {
   list: (filter?: string) => request<RuleDocSummary[]>(`/rule-documents${filter ? `?filter=${filter}` : ''}`),
   mine: () => request<RuleDocSummary[]>('/rule-documents/mine'),
   get: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}`),
-  create: (input: { title: string; contentMd: string; expiresAt?: string | null }) =>
+  create: (input: { title: string; contentMd: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string; attachments?: AddAttachmentInput[] }) =>
     request<RuleDocDetail>('/rule-documents', { method: 'POST', body: JSON.stringify(input) }),
-  update: (id: string, input: { title?: string; contentMd?: string; expiresAt?: string | null }) =>
+  update: (id: string, input: { title?: string; contentMd?: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string }) =>
     request<RuleDocDetail>(`/rule-documents/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   publish: (id: string) => request<RuleDocDetail>(`/rule-documents/${id}/publish`, { method: 'POST' }),
   remove: (id: string) => request<{ ok: boolean }>(`/rule-documents/${id}`, { method: 'DELETE' }),
@@ -2174,6 +2285,18 @@ export const ruleDocumentsApi = {
     request<RuleDocDetail>(`/rule-documents/${id}/comments`, { method: 'POST', body: JSON.stringify({ contentMd, ...(parentId ? { parentId } : {}) }) }),
   deleteComment: (commentId: string) =>
     request<{ ok: boolean }>(`/rule-documents/comments/${commentId}`, { method: 'DELETE' }),
+  addAttachment: (id: string, input: AddAttachmentInput) =>
+    request<RuleDocDetail>(`/rule-documents/${id}/attachments`, { method: 'POST', body: JSON.stringify(input) }),
+  removeAttachment: (id: string, attId: string) =>
+    request<RuleDocDetail>(`/rule-documents/${id}/attachments/${attId}`, { method: 'DELETE' }),
+  renameAttachment: (id: string, attId: string, title: string) =>
+    request<RuleDocDetail>(`/rule-documents/${id}/attachments/${attId}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
+  attachmentFile: (id: string, attId: string) =>
+    request<{ fileName: string | null; mimeType: string | null; dataUrl: string }>(`/rule-documents/${id}/attachments/${attId}/file`),
+  probeLink: (url: string) =>
+    request<LinkProbe>('/rule-documents/probe-link', { method: 'POST', body: JSON.stringify({ url }) }),
+  fetchLinkText: (url: string) =>
+    request<{ text: string; chars: number }>('/rule-documents/fetch-link', { method: 'POST', body: JSON.stringify({ url }) }),
 };
 
 // §28 — Decisions.

@@ -17,7 +17,9 @@ export function WalletPanel() {
   const [confirmSweep, setConfirmSweep] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [sweepHours, setSweepHours] = useState<number>(24);
+  const [mode, setMode] = useState<'scheduled' | 'immediate'>('scheduled');
   useEffect(() => { if (w) setSweepHours(w.anchorSweepHours); }, [w?.anchorSweepHours]);
+  useEffect(() => { if (w) setMode(w.anchorMode); }, [w?.anchorMode]);
 
   const load = useCallback(() => {
     adminApi.wallet().then(setW).catch((e) => setError(e instanceof Error ? e.message : 'failed'));
@@ -41,9 +43,9 @@ export function WalletPanel() {
   const swept = (w?.hotWallet.balanceAda ?? 0) <= 2; // ~empty → safe to rotate
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Anchor hot wallet</h2>
-      <p className="mb-3 text-xs text-slate-400">
+    <section className="rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-slate-400">Anchor hot wallet</h2>
+      <p className="mb-3 text-xs text-neutral-500 dark:text-slate-400">
         The hot wallet pays the small per-decision tx fees. Keep its balance minimal. To rotate the seed (e.g. on
         compromise), first move all funds to the treasury (multisig), then exchange the seed — the new address is
         funded afresh. The seed is never shown.
@@ -52,7 +54,7 @@ export function WalletPanel() {
       {msg ? <div className="mb-2 text-sm text-emerald-400">{msg}</div> : null}
 
       {!w ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-neutral-500 dark:text-slate-400">Loading…</p>
       ) : (
         <>
           <dl className="space-y-2 text-xs">
@@ -100,20 +102,37 @@ export function WalletPanel() {
             >
               {busy === 'rotate' ? 'Exchanging…' : '2. Exchange the seed'}
             </button>
-            <span className="text-xs text-slate-500">{swept ? 'Hot wallet is empty — seed can be exchanged.' : 'Sweep before exchanging the seed.'}</span>
+            <span className="text-xs text-neutral-400 dark:text-slate-500">{swept ? 'Hot wallet is empty — seed can be exchanged.' : 'Sweep before exchanging the seed.'}</span>
           </div>
 
-          {/* §24 — on-chain anchoring cadence + force-now (no board needed). */}
-          <div className="mt-4 border-t border-slate-800 pt-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">On-chain anchoring</h3>
-            <p className="mt-1 text-xs text-slate-400">
-              Decided proposals &amp; decisions are recorded on-chain. <strong>{w.pendingAnchors}</strong> pending — submitted automatically every {w.anchorSweepHours}h (needs a funded hot wallet), or force it now.
+          {/* §24 — on-chain anchoring cadence + force-now. Submission runs automatically on the
+              configured interval (needs a funded hot wallet); no board action is required. */}
+          <div className="mt-4 border-t border-neutral-200 dark:border-slate-800 pt-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-slate-400">On-chain anchoring</h3>
+            <p className="mt-1 text-xs text-neutral-500 dark:text-slate-400">
+              Decided proposals &amp; decisions are recorded on-chain. <strong>{w.pendingAnchors}</strong> pending
+              {w.anchorMode === 'immediate'
+                ? <> — each decision is submitted on its own the moment it is decided (one tx per decision).</>
+                : <> — submitted automatically in cheap batches every {w.anchorSweepHours}h (several decisions share one tx fee).</>}
+              {' '}Needs a funded hot wallet; there is no board button — only you control this. You can also force submission now.
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-              <label className="flex items-center gap-1 text-xs text-slate-400">Every
-                <input type="number" min={1} max={168} value={sweepHours} onChange={(e) => setSweepHours(Math.max(1, Math.min(168, Number(e.target.value) || 1)))} className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" /> hours
+            <div className="mt-3 space-y-2 text-sm">
+              <label className="flex items-start gap-2">
+                <input type="radio" name="anchorMode" checked={mode === 'scheduled'} onChange={() => setMode('scheduled')} className="mt-0.5" />
+                <span><span className="font-medium text-neutral-800 dark:text-slate-200">Regularly (batch)</span> <span className="text-xs text-neutral-500 dark:text-slate-400">— cheaper: pending decisions are anchored together on an interval.</span></span>
               </label>
-              <button disabled={busy !== null} onClick={() => run('anchor-config', async () => `Anchor interval set to ${(await adminApi.setAnchorConfig(sweepHours)).sweepHours}h`)} className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-40">{busy === 'anchor-config' ? 'Saving…' : 'Save interval'}</button>
+              <label className="flex items-start gap-2">
+                <input type="radio" name="anchorMode" checked={mode === 'immediate'} onChange={() => setMode('immediate')} className="mt-0.5" />
+                <span><span className="font-medium text-neutral-800 dark:text-slate-200">Immediately</span> <span className="text-xs text-neutral-500 dark:text-slate-400">— each decision is anchored the instant it is decided (one tx each, pricier).</span></span>
+              </label>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+              {mode === 'scheduled' ? (
+                <label className="flex items-center gap-1 text-xs text-neutral-500 dark:text-slate-400">Every
+                  <input type="number" min={1} max={168} value={sweepHours} onChange={(e) => setSweepHours(Math.max(1, Math.min(168, Number(e.target.value) || 1)))} className="w-16 rounded border border-neutral-300 dark:border-slate-700 bg-neutral-100 dark:bg-slate-950 px-2 py-1 text-neutral-900 dark:text-slate-100" /> hours
+                </label>
+              ) : null}
+              <button disabled={busy !== null} onClick={() => run('anchor-config', async () => { const r = await adminApi.setAnchorConfig({ mode, sweepHours }); return r.mode === 'immediate' ? 'Anchoring set to immediate (one tx per decision)' : `Anchoring set to batch every ${r.sweepHours}h`; })} className="rounded-md border border-neutral-300 dark:border-slate-700 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-slate-800 disabled:opacity-40">{busy === 'anchor-config' ? 'Saving…' : 'Save'}</button>
               <button disabled={busy !== null || w.pendingAnchors === 0} onClick={() => run('submit-anchors', async () => { const r = await adminApi.submitAnchors(); return r.submitted ? `Submitted ${r.submitted}/${r.total} on-chain${r.failed ? `, ${r.failed} still pending` : ''}` : (r.reason ?? 'Nothing submitted — check the hot-wallet balance.'); })} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-40">{busy === 'submit-anchors' ? 'Submitting…' : `Submit ${w.pendingAnchors} now`}</button>
             </div>
           </div>
@@ -144,12 +163,12 @@ export function WalletPanel() {
 function WalletRow({ label, address, balanceAda, configured }: { label: string; address: string | null; balanceAda: number; configured: boolean }) {
   return (
     <div className="flex flex-wrap items-baseline gap-2">
-      <dt className="w-36 shrink-0 font-medium text-slate-400">{label}</dt>
+      <dt className="w-36 shrink-0 font-medium text-neutral-500 dark:text-slate-400">{label}</dt>
       <dd className="min-w-0 flex-1">
         {address ? (
           <>
-            <span className="break-all font-mono text-slate-300">{address}</span>
-            <span className="ml-2 tabular-nums text-slate-400">· {balanceAda.toLocaleString()} ₳</span>
+            <span className="break-all font-mono text-neutral-700 dark:text-slate-300">{address}</span>
+            <span className="ml-2 tabular-nums text-neutral-500 dark:text-slate-400">· {balanceAda.toLocaleString()} ₳</span>
           </>
         ) : (
           <span className="text-amber-400">{configured ? 'not derivable' : 'not configured'}</span>

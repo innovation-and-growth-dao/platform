@@ -118,6 +118,19 @@ export class AnchorService implements OnModuleInit {
    * here — the board sees the address + balance for oversight.
    */
   private readonly DEFAULT_SWEEP_HOURS = 24;
+  // §24 — anchoring mode. 'scheduled' (default): decisions are recorded off-chain immediately but
+  // submitted on-chain in cheap batches on the sweep interval (many results share one tx fee).
+  // 'immediate': each decision submits its own tx the moment it is decided (pricier, but instant).
+  private readonly DEFAULT_MODE: 'scheduled' | 'immediate' = 'scheduled';
+  async getAnchorMode(): Promise<'scheduled' | 'immediate'> {
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: 'ANCHOR_MODE' } });
+    return row?.value === 'immediate' ? 'immediate' : 'scheduled';
+  }
+  async setAnchorMode(mode: 'scheduled' | 'immediate'): Promise<'scheduled' | 'immediate'> {
+    if (mode !== 'scheduled' && mode !== 'immediate') throw new BadRequestException('anchor mode must be "scheduled" or "immediate"');
+    await this.prisma.platformConfig.upsert({ where: { key: 'ANCHOR_MODE' }, update: { value: mode }, create: { key: 'ANCHOR_MODE', value: mode } });
+    return mode;
+  }
   async getSweepHours(): Promise<number> {
     const row = await this.prisma.platformConfig.findUnique({ where: { key: 'ANCHOR_SWEEP_HOURS' } });
     const h = row ? Number(row.value) : this.DEFAULT_SWEEP_HOURS;
@@ -128,6 +141,16 @@ export class AnchorService implements OnModuleInit {
     if (!Number.isFinite(h) || h < 1 || h > 168) throw new BadRequestException('anchor interval must be between 1 and 168 hours');
     await this.prisma.platformConfig.upsert({ where: { key: 'ANCHOR_SWEEP_HOURS' }, update: { value: String(h) }, create: { key: 'ANCHOR_SWEEP_HOURS', value: String(h) } });
     return h;
+  }
+  /**
+   * §24 — inline submit gate. In 'immediate' mode a freshly-recorded anchor is pushed to the chain
+   * right away; in 'scheduled' mode it is left pending (txHash=null) for the next cheap batch sweep.
+   * May throw on a submit failure — callers keep it inside their existing try/catch so a failed
+   * push just leaves the anchor pending (the sweep retries it) instead of failing the decision.
+   */
+  private async maybeSubmitInline(event: AnchorResultMetadata | AnchorSubmissionMetadata | AnchorPayoutMetadata | AnchorDocHashMetadata | Record<string, unknown>): Promise<string | null> {
+    if ((await this.getAnchorMode()) !== 'immediate') return null;
+    return this.submitMetadataTx(event);
   }
   async pendingAnchorCount(): Promise<number> {
     return this.prisma.anchor.count({ where: { txHash: null } });
@@ -159,6 +182,7 @@ export class AnchorService implements OnModuleInit {
             totalKeys: active.totalKeys,
           }
         : null,
+      anchorMode: await this.getAnchorMode(),
       anchorSweepHours: await this.getSweepHours(),
       pendingAnchors: await this.pendingAnchorCount(),
     };
@@ -254,6 +278,7 @@ export class AnchorService implements OnModuleInit {
     no: number;
     threshold: number;
     totalPower?: number; // BAL: total eligible voting power (for the on-chain tally)
+    abstain?: number; // BAL: summed power of the abstentions
     preimageVotes?: unknown; // richer votes (rationale/signature) for the off-chain preimage
   }): Promise<AnchorResult> {
     const preimage = {
@@ -281,13 +306,14 @@ export class AnchorService implements OnModuleInit {
       no: params.no,
       threshold: params.threshold,
       totalPower: params.totalPower,
+      abstain: params.abstain,
       outcome: params.outcome,
       proofHash: hash,
     })[GOVERNANCE_METADATA_LABEL];
 
     let txHash: string | null = null;
     try {
-      txHash = await this.submitMetadataTx(metadata);
+      txHash = await this.maybeSubmitInline(metadata);
     } catch (e) {
       this.logger.warn(`anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`);
     }
@@ -356,7 +382,7 @@ export class AnchorService implements OnModuleInit {
 
     let txHash: string | null = null;
     try {
-      txHash = await this.submitMetadataTx(metadata);
+      txHash = await this.maybeSubmitInline(metadata);
     } catch (e) {
       this.logger.warn(`submission anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`);
     }
@@ -419,7 +445,7 @@ export class AnchorService implements OnModuleInit {
 
     let txHash: string | null = null;
     try {
-      txHash = await this.submitMetadataTx(metadata);
+      txHash = await this.maybeSubmitInline(metadata);
     } catch (e) {
       this.logger.warn(`proposal-doc anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`);
     }
@@ -428,6 +454,66 @@ export class AnchorService implements OnModuleInit {
         kind: GovSubject.PROPOSAL_DOC,
         proposalId: params.proposalRowId,
         roundId: params.roundId ?? null,
+        hash: contentHash,
+        preimage: preimage as unknown as object,
+        metadataLabel: GOVERNANCE_METADATA_LABEL,
+        txHash,
+        submittedAt: txHash ? new Date() : null,
+      },
+    });
+    return { hash: contentHash, txHash, submitted: !!txHash };
+  }
+
+  /**
+   * §10 — anchor a **voting-deadline extension** on-chain: which internal proposal, the old and new
+   * deadlines, and who extended it. Each extension is its own Anchor row (kind 'internal_extended'),
+   * so the row set is also the recorded extension history. Degrades gracefully (txHash null) when no
+   * anchor hot wallet is configured.
+   */
+  async anchorExtension(params: {
+    proposalRowId: string;
+    publicId: string;
+    title: string;
+    fromIso: string;
+    toIso: string;
+    byDrepId: string | null;
+    byName: string;
+  }): Promise<AnchorResult> {
+    const hashAlgo = 'SHA-256';
+    const atIso = new Date().toISOString();
+    const text = `internal-deadline-extension|${params.publicId}|${params.fromIso}->${params.toIso}|by:${params.byDrepId ?? params.byName}|at:${atIso}`;
+    const contentHash = sha256hex(text);
+    const preimage = {
+      subject: 'INTERNAL_EXTEND',
+      proposalId: params.publicId,
+      title: params.title,
+      fromIso: params.fromIso,
+      toIso: params.toIso,
+      by: params.byName,
+      byDrepId: params.byDrepId,
+      hashAlgo,
+      contentHash,
+      atIso,
+    };
+    const metadata = buildDocHashMetadata({
+      title: `Deadline extension — ${params.title}`,
+      proposalId: params.publicId,
+      round: null,
+      hashAlgo,
+      contentHash,
+      frozenAt: atIso,
+    })[GOVERNANCE_METADATA_LABEL];
+
+    let txHash: string | null = null;
+    try {
+      txHash = await this.maybeSubmitInline(metadata);
+    } catch (e) {
+      this.logger.warn(`internal-extend anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`);
+    }
+    await this.prisma.anchor.create({
+      data: {
+        kind: 'internal_extended',
+        proposalId: params.proposalRowId,
         hash: contentHash,
         preimage: preimage as unknown as object,
         metadataLabel: GOVERNANCE_METADATA_LABEL,
@@ -476,7 +562,7 @@ export class AnchorService implements OnModuleInit {
 
     let txHash: string | null = null;
     try {
-      txHash = await this.submitMetadataTx(metadata);
+      txHash = await this.maybeSubmitInline(metadata);
     } catch (e) {
       this.logger.warn(`payout anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`);
     }
@@ -522,7 +608,7 @@ export class AnchorService implements OnModuleInit {
       proofHash: hash,
     })[GOVERNANCE_METADATA_LABEL];
     let txHash: string | null = null;
-    try { txHash = await this.submitMetadataTx(metadata as unknown as Record<string, unknown>); }
+    try { txHash = await this.maybeSubmitInline(metadata as unknown as Record<string, unknown>); }
     catch (e) { this.logger.warn(`multisig-new anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`); }
     await this.prisma.anchor.create({
       data: { kind: GovSubject.MULTISIG_NEW, hash, preimage: preimage as unknown as object, metadataLabel: GOVERNANCE_METADATA_LABEL, txHash, submittedAt: txHash ? new Date() : null },
@@ -549,7 +635,7 @@ export class AnchorService implements OnModuleInit {
     const hash = sha256hex(JSON.stringify(preimage));
     const metadata = buildMultisigMigrationMetadata({ newAddress: params.newAddress, moves, proofHash: hash })[GOVERNANCE_METADATA_LABEL];
     let txHash: string | null = null;
-    try { txHash = await this.submitMetadataTx(metadata as unknown as Record<string, unknown>); }
+    try { txHash = await this.maybeSubmitInline(metadata as unknown as Record<string, unknown>); }
     catch (e) { this.logger.warn(`multisig-migration anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`); }
     await this.prisma.anchor.create({
       data: { kind: GovSubject.MULTISIG_MIGRATION, hash, preimage: preimage as unknown as object, metadataLabel: GOVERNANCE_METADATA_LABEL, txHash, submittedAt: txHash ? new Date() : null },
@@ -591,7 +677,7 @@ export class AnchorService implements OnModuleInit {
     };
     let txHash: string | null = null;
     try {
-      txHash = await this.submitMetadataTx(metadata as Record<string, unknown>);
+      txHash = await this.maybeSubmitInline(metadata as Record<string, unknown>);
     } catch (e) {
       this.logger.warn(`membership anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`);
     }
@@ -636,7 +722,7 @@ export class AnchorService implements OnModuleInit {
     };
     let txHash: string | null = null;
     try {
-      txHash = await this.submitMetadataTx(metadata as Record<string, unknown>);
+      txHash = await this.maybeSubmitInline(metadata as Record<string, unknown>);
     } catch (e) {
       this.logger.warn(`daily digest anchor submit skipped/failed: ${e instanceof Error ? e.message : e}`);
     }
@@ -715,10 +801,17 @@ export class AnchorService implements OnModuleInit {
 
       let submitted = 0;
       let failed = 0;
-      for (let i = 0; i < pending.length; i++) {
-        const a = pending[i];
-        // Rebuilding metadata from a malformed/legacy preimage can throw — count it as a failure
-        // (with a reason) instead of aborting the whole batch with a 500.
+
+      // §24 — pack several pending decisions into as few txs as possible: each tx carries an array
+      // of result events under the one metadata label, so N decisions share ONE tx fee instead of N.
+      // Rebuild every event first (a malformed/legacy preimage is counted failed, not batched), then
+      // group into size-bounded units well under the 16 KB tx-metadata ceiling.
+      const MAX_ITEMS = 16; // decisions per batch tx
+      const MAX_BYTES = 6000; // raw event-JSON budget per batch (chunking + CBOR stay under 16 KB)
+      type Unit = { anchors: typeof pending; events: ReturnType<AnchorService['metadataFromAnchor']>[]; bytes: number };
+      const units: Unit[] = [];
+      let cur: Unit = { anchors: [], events: [], bytes: 0 };
+      for (const a of pending) {
         let event: ReturnType<AnchorService['metadataFromAnchor']>;
         try {
           event = this.metadataFromAnchor(a);
@@ -728,38 +821,54 @@ export class AnchorService implements OnModuleInit {
           failed++;
           continue;
         }
+        const sz = JSON.stringify(event).length;
+        if (cur.anchors.length > 0 && (cur.anchors.length >= MAX_ITEMS || cur.bytes + sz > MAX_BYTES)) {
+          units.push(cur);
+          cur = { anchors: [], events: [], bytes: 0 };
+        }
+        cur.anchors.push(a);
+        cur.events.push(event);
+        cur.bytes += sz;
+      }
+      if (cur.anchors.length) units.push(cur);
+
+      for (let i = 0; i < units.length; i++) {
+        const unit = units[i];
+        // One decision → bare object (the historical on-chain shape); several → array (the batch).
+        const payload = unit.events.length === 1 ? unit.events[0] : (unit.events as unknown as Array<Record<string, unknown>>);
+        const ids = unit.anchors.map((a) => a.id);
         let ok = false;
-        // Try the largest spendable UTxO; if the node rejects it, drop it and retry.
+        // Try the largest spendable UTxO; if the node rejects it, drop it and retry the same batch.
         while (!ok) {
           const candidates = pool.filter((u) => !bad.has(ref(u)));
-          if (candidates.length === 0) break; // no spendable UTxO left for this anchor
+          if (candidates.length === 0) break; // no spendable UTxO left for this batch
           let built: { fixedHex: string; txHash: string; change: Utxo | null; inputs: string[] };
           try {
-            built = this.buildMetadataTx(event, candidates, pp, prv, addr);
+            built = this.buildMetadataTx(payload, candidates, pp, prv, addr);
           } catch (e) {
             reason ??= e instanceof Error ? e.message : String(e);
-            this.logger.warn(`force-submit ${a.id} failed to build: ${e instanceof Error ? e.message : e}`);
-            break; // malformed anchor — skip it, keep the pool for the others
+            this.logger.warn(`force-submit batch [${ids.join(',')}] failed to build: ${e instanceof Error ? e.message : e}`);
+            break; // malformed batch — skip it, keep the pool for the others
           }
           built.inputs.forEach((r) => bad.add(r)); // either spent (success) or rejected (failure)
           try {
             await this.submitTxHex(built.fixedHex);
-            await this.prisma.anchor.update({ where: { id: a.id }, data: { txHash: built.txHash, submittedAt: new Date() } });
-            this.logger.log(`anchored on-chain: ${built.txHash}`);
-            submitted++;
-            if (built.change) pool.push(built.change); // chain: the change funds later anchors
+            await this.prisma.anchor.updateMany({ where: { id: { in: ids } }, data: { txHash: built.txHash, submittedAt: new Date() } });
+            this.logger.log(`anchored ${ids.length} decision(s) on-chain: ${built.txHash}`);
+            submitted += ids.length;
+            if (built.change) pool.push(built.change); // chain: the change funds later batches
             ok = true;
             // A local cardano-submit-api has the change in its mempool instantly, so no
             // wait is needed; only Koios's load-balanced relays need time to propagate.
-            if (i < pending.length - 1 && !this.submitApiUrl) await this.sleep(4000);
+            if (i < units.length - 1 && !this.submitApiUrl) await this.sleep(4000);
           } catch (e) {
             // The chosen input isn't really spendable (stale db-sync / already in-flight).
-            // It's now in `bad`; the loop retries this same anchor with the remaining UTxOs.
+            // It's now in `bad`; the loop retries this same batch with the remaining UTxOs.
             reason ??= e instanceof Error ? e.message : String(e);
-            this.logger.warn(`force-submit ${a.id}: input rejected (${built.inputs.join(',')}), retrying with remaining UTxOs — ${e instanceof Error ? e.message : e}`);
+            this.logger.warn(`force-submit batch [${ids.join(',')}]: input rejected (${built.inputs.join(',')}), retrying with remaining UTxOs — ${e instanceof Error ? e.message : e}`);
           }
         }
-        if (!ok) failed++;
+        if (!ok) failed += ids.length;
       }
       return { submitted, failed, total: pending.length, ...(failed && reason ? { reason } : {}) };
     } finally {
@@ -905,19 +1014,23 @@ export class AnchorService implements OnModuleInit {
   /**
    * Build + sign one metadata tx from the given UTxOs. Returns the signed tx hex, its
    * hash, and the change output (so a batch can chain txs without re-querying Koios).
+   * `event` may be a single event (one decision → bare object under the label, the historical
+   * shape) or an array of events (a §24 batch → array under the same label, so several decisions
+   * share one tx fee). Verifiers read the label and match their decision by its embedded proofHash.
    */
   private buildMetadataTx(
-    event: AnchorResultMetadata | AnchorSubmissionMetadata | AnchorPayoutMetadata | AnchorDocHashMetadata | Record<string, unknown>,
+    event: AnchorResultMetadata | AnchorSubmissionMetadata | AnchorPayoutMetadata | AnchorDocHashMetadata | Record<string, unknown> | Array<Record<string, unknown>>,
     utxos: Utxo[],
     pp: Record<string, string | number>,
     prv: CSL.PrivateKey,
     addr: CSL.Address,
   ): { fixedHex: string; txHash: string; change: Utxo | null; inputs: string[] } {
     if (!utxos.length) throw new Error('anchor wallet has no UTxOs');
+    const payload = Array.isArray(event) ? event.map((e) => this.chunkLongStrings(e)) : this.chunkLongStrings(event);
     const txb = CSL.TransactionBuilder.new(this.builderCfg(pp));
     txb.add_json_metadatum_with_schema(
       CSL.BigNum.from_str(String(GOVERNANCE_METADATA_LABEL)),
-      JSON.stringify(this.chunkLongStrings(event)),
+      JSON.stringify(payload),
       CSL.MetadataJsonSchema.NoConversions,
     );
     const unspent = CSL.TransactionUnspentOutputs.new();

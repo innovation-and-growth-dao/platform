@@ -90,25 +90,25 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
       <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         {governance ? (
           <>
-            <Tile bg="#0e7a4b" label={t('Voting DReps')} big={`${data?.members.votingDReps ?? 0}`}
+            <Tile loading={!data} bg="#0e7a4b" label={t('Voting DReps')} big={`${data?.members.votingDReps ?? 0}`}
               sub={data?.admissionOpen ? t('Open admission — join freely') : t('Board-gated admission')} />
-            <Tile bg="#0e6f73" label={t('Governance proposals')} big={`${data?.internalProposals.total ?? 0}`}
+            <Tile loading={!data} bg="#0e6f73" label={t('Governance proposals')} big={`${data?.internalProposals.total ?? 0}`}
               sub={`${data?.internalProposals.passed ?? 0} ${t('passed')} · ${data?.internalProposals.active ?? 0} ${t('in voting')}`} />
-            <Tile bg="#4f8f2f" label={t('Board')} big={data ? (data.board.elected ? `${data.board.seats}` : '—') : '—'}
+            <Tile loading={!data} bg="#4f8f2f" label={t('Board')} big={data ? (data.board.elected ? `${data.board.seats}` : '—') : '—'}
               sub={data?.board.elected ? t('seats elected') : t('not yet elected')} />
-            <Tile bg="#173a2a" label={t('Governance')} big={data?.admissionOpen ? t('Open') : t('Gated')}
-              sub={t('Any registered DRep can join & vote')} />
+            <Tile loading={!data} bg="#173a2a" label={t('Governance')} big={data?.admissionOpen ? t('Open') : t('Gated')}
+              sub={data?.admissionOpen ? t('Any registered DRep can join & vote') : t('Any registered DRep can apply to become a member')} />
           </>
         ) : (
           <>
-            <Tile bg="#0e7a4b" label={t('Treasury balance')} big={ada(data?.treasuryBalanceAda)}
+            <Tile loading={!data} bg="#0e7a4b" label={t('Treasury balance')} big={ada(data?.treasuryBalanceAda)}
               sub={round ? `₳ ${n(round.budgetAda)} ${t('committed to Round')} ${round.number}` : t('On-chain, live')} />
-            <Tile bg="#0e6f73" label={round ? `${t('Round')} ${round.number} ${t('budget')}` : t('Round budget')}
+            <Tile loading={!data} bg="#0e6f73" label={round ? `${t('Round')} ${round.number} ${t('budget')}` : t('Round budget')}
               big={round ? ada(round.budgetAda) : '—'}
               sub={round ? `+ ₳ ${n(round.rewardsPoolAda)} ${t('rewards pool')}` : t('No active round')} />
-            <Tile bg="#4f8f2f" label={t('Voting DReps')} big={`${data?.members.votingDReps ?? 0}`}
+            <Tile loading={!data} bg="#4f8f2f" label={t('Voting DReps')} big={`${data?.members.votingDReps ?? 0}`}
               sub={`${data?.members.experts ?? 0} ${t('experts advising')}`} />
-            <Tile bg="#173a2a" label={t('Proposals')} big={`${data?.proposals.total ?? 0}`}
+            <Tile loading={!data} bg="#173a2a" label={t('Proposals')} big={`${data?.proposals.total ?? 0}`}
               sub={`${data?.proposals.approved ?? 0} ${t('approved')} · ${data?.proposals.inReview ?? 0} ${t('in review')}`} />
           </>
         )}
@@ -151,6 +151,23 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
         </div>
       ) : null}
 
+      {/* ---- Telegram coordination group — shown only when an invite is configured ---- */}
+      {data?.telegramUrl ? (
+        <a href={data.telegramUrl} target="_blank" rel="noreferrer"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 transition hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/30 dark:hover:bg-sky-950/50">
+          <span className="flex items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#229ED9] text-white">
+              <TelegramIcon />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-semibold text-sky-900 dark:text-sky-100">{t('Join our coordination Telegram group')}</span>
+              <span className="block text-[13px] text-sky-800/70 dark:text-sky-200/60">{t('Coordinate with the community, ask questions and stay in the loop.')}</span>
+            </span>
+          </span>
+          <span className="shrink-0 rounded-full bg-[#229ED9] px-5 py-2 text-sm font-semibold text-white hover:brightness-105">{t('Open Telegram')}</span>
+        </a>
+      ) : null}
+
       {/* ---- Transparency footer note ---- */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-[12.5px] text-neutral-500 dark:text-neutral-400">
         <span className="inline-flex items-center gap-1.5">
@@ -165,13 +182,32 @@ export function PublicLanding({ onConnect, onExplore }: { onConnect: () => void;
   );
 }
 
-function Tile({ bg, label, big, sub }: { bg: string; label: string; big: string; sub: string }) {
+function TelegramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
+      <path d="M21.94 4.9 18.9 19.3c-.23 1.02-.84 1.27-1.7.79l-4.7-3.46-2.27 2.18c-.25.25-.46.46-.95.46l.34-4.8 8.73-7.9c.38-.34-.08-.53-.59-.19L6.72 13.2 2.07 11.75c-1.01-.32-1.03-1.01.21-1.5L20.63 3.4c.84-.31 1.58.2 1.31 1.5z" />
+    </svg>
+  );
+}
+
+function Tile({ bg, label, big, sub, loading }: { bg: string; label: string; big: string; sub: string; loading?: boolean }) {
   return (
     <div className="flex min-h-[118px] flex-col justify-between rounded-2xl p-4 text-white" style={{ backgroundColor: bg }}>
       <div className="text-[12.5px] opacity-90">{label}</div>
       <div>
-        <div className="text-[30px] font-bold leading-none tracking-tight tabular-nums">{big}</div>
-        <div className="mt-1 text-[12px] opacity-90">{sub}</div>
+        {loading ? (
+          // Skeleton while the overview loads — so a real number appears in place, instead of a
+          // placeholder "0" that visibly jumps to the true value a moment later.
+          <>
+            <div className="h-[26px] w-14 animate-pulse rounded-md bg-white/25" />
+            <div className="mt-2 h-3 w-24 animate-pulse rounded bg-white/20" />
+          </>
+        ) : (
+          <>
+            <div className="text-[30px] font-bold leading-none tracking-tight tabular-nums">{big}</div>
+            <div className="mt-1 text-[12px] opacity-90">{sub}</div>
+          </>
+        )}
       </div>
     </div>
   );

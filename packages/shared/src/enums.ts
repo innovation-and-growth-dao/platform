@@ -42,6 +42,12 @@ export const ProposalStatus = {
   REJECTED: 'REJECTED',
   COMPLETE: 'COMPLETE',
   FAILED: 'FAILED',
+  // §30 — a "document for public comment" that is published (visible + commentable) but not yet a
+  // vote. The author later opens voting, which moves it to ACTIVE.
+  COMMENT: 'COMMENT',
+  // §10 — a board member soft-deletes a submitted internal proposal: the row is KEPT for the record
+  // (history, on-chain anchors) and only hidden from the normal lists; it shows under the Deleted filter.
+  DELETED: 'DELETED',
 } as const;
 export type ProposalStatus = (typeof ProposalStatus)[keyof typeof ProposalStatus];
 
@@ -88,6 +94,10 @@ export const InternalType = {
   SPENDING: 'SPENDING', // §10.5 — approved → an OPS multisig action the board signs
   RULE_APPROVAL: 'RULE_APPROVAL', // §27 — approval/delete vote on a rule document
   DECISION_APPROVAL: 'DECISION_APPROVAL', // §28 — approve/delete a decision
+  // §30 — "Document for public comment": uploaded files / external (Drive) links, open for comment
+  // but NOT yet a vote. Lives in status COMMENT; the author later opens voting and picks the real
+  // vote type (internalType is then switched to INFORMATIVE/POLL/… and the document is locked).
+  DOCUMENT: 'DOCUMENT',
 } as const;
 export type InternalType = (typeof InternalType)[keyof typeof InternalType];
 

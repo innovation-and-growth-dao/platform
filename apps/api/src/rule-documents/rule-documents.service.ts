@@ -4,9 +4,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { InternalProposalsService } from '../internal-proposals/internal-proposals.service';
 import { BoardService } from '../auth/board.service';
 import { MeritService } from '../merit/merit.service';
+import { extractText, parseDataUrl, fetchAndExtract } from '../proposal-checker/text-extract';
+import { canCommentWith } from '../common/comment-audience';
 
 const sha256hex = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
 const PUBLIC_STATUSES = ['DRAFT', 'ACTIVE', 'DELETED'];
+const MAX_UPLOAD_BYTES = 6 * 1024 * 1024;
+
+type RuleAttachmentInput = { source: string; title?: string; dataUrl?: string; fileName?: string; url?: string };
 
 /**
  * §27 — Rule Documents. A DRep authors a document (PRIVATE, owner-only), publishes it (DRAFT,
@@ -143,8 +148,22 @@ export class RuleDocumentsService {
     const isDrep = !!userId && (await this.admittedDrep(userId));
     const canModerate = !!userId && (await this.board.isBoardMember(userId)); // board can delete any comment
     const live = await this.hasLiveVote(doc.id);
-    const editable = isOwner && (doc.status === 'PRIVATE' || (doc.status === 'DRAFT' && !live));
+    const mayEditRole = isOwner || (doc.docEditableBy === 'PROPOSER_BOARD' && canModerate);
+    const editable = mayEditRole && (doc.status === 'PRIVATE' || (doc.status === 'DRAFT' && !live));
     const comments = doc.status === 'PRIVATE' ? [] : await this.loadComments(doc.id, userId);
+    const attRows = await this.prisma.ruleDocumentAttachment.findMany({ where: { documentId: doc.id }, orderBy: { sortIdx: 'asc' } });
+    const attachments = attRows.map((a) => ({
+      id: a.id,
+      source: a.source,
+      title: a.title,
+      sourceUrl: a.sourceUrl,
+      fileName: a.fileName,
+      mimeType: a.mimeType,
+      extractedText: a.extractedText,
+      hasFile: !!a.fileDataUrl,
+    }));
+    const canComment =
+      !!userId && doc.status !== 'PRIVATE' && doc.status !== 'DELETED' && (await canCommentWith(this.prisma, userId, doc.commentAudience));
 
     return {
       canModerate,
@@ -153,28 +172,145 @@ export class RuleDocumentsService {
       // sha256 of the raw content (UTF-8), hex — the exact value a user can reproduce from the
       // downloaded text. For an ACTIVE document this equals the frozen, on-chain-anchored hash.
       contentHash: sha256hex(doc.contentMd),
+      commentAudience: doc.commentAudience,
+      docEditableBy: doc.docEditableBy,
+      attachments,
       isOwner,
       editable,
       // A document with a live vote is locked; a DRAFT with no live vote can be voted; ACTIVE can
       // only be deleted (via a delete vote); PRIVATE/DELETED can't be voted.
       canPropose: isDrep && !live && (doc.status === 'DRAFT' || doc.status === 'ACTIVE'),
-      canComment: isDrep && doc.status !== 'PRIVATE' && doc.status !== 'DELETED',
+      canComment,
       comments,
       lastVote,
       approvedAt: await this.approvedAt(doc.id),
     };
   }
 
-  async create(userId: string, dto: { title: string; contentMd: string; expiresAt?: string | null }) {
+  async create(userId: string, dto: { title: string; contentMd: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string; attachments?: RuleAttachmentInput[] }) {
     const drep = await this.prisma.drep.findUnique({ where: { userId }, select: { id: true, status: true } });
     if (drep?.status !== 'ADMITTED') throw new ForbiddenException('you must be a Council member to author rule documents — join the Council first (it is free)');
     const expiresAt = this.nextExpiry(null, dto.expiresAt) ?? null;
     const doc = await this.prisma.ruleDocument.create({
-      data: { title: dto.title.trim(), contentMd: dto.contentMd, ownerUserId: userId, status: 'PRIVATE', expiresAt },
+      data: {
+        title: dto.title.trim(),
+        contentMd: dto.contentMd,
+        ownerUserId: userId,
+        status: 'PRIVATE',
+        expiresAt,
+        commentAudience: dto.commentAudience ?? 'MEMBERS',
+        docEditableBy: dto.docEditableBy ?? 'PROPOSER',
+      },
     });
+    const items = dto.attachments ?? [];
+    for (let i = 0; i < items.length; i++) await this.ingestAttachment(doc.id, items[i], i);
     // §13 — +1 merit for authoring a new rule document (no-op while the merit system is disabled).
     await this.merit.tryAward(drep.id, 'RULE_DOC_SUBMIT', doc.id);
     return this.getOne(doc.id, userId);
+  }
+
+  /** Ingest one attachment: an UPLOAD (store the data URL + best-effort extracted text) or a LINK
+   *  (store the URL + best-effort fetched text). Extraction never blocks. Mirrors §30. */
+  private async ingestAttachment(documentId: string, dto: RuleAttachmentInput, sortIdx: number) {
+    if (dto.source === 'UPLOAD') {
+      const parsed = parseDataUrl(dto.dataUrl ?? '');
+      if (!parsed) throw new BadRequestException('invalid file data');
+      if (parsed.buffer.length > MAX_UPLOAD_BYTES) {
+        throw new BadRequestException(`file too large (max ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB)`);
+      }
+      const { text, note } = await extractText(parsed.buffer, parsed.mime, dto.fileName).catch(() => ({ text: '', note: 'no extractable text' as const }));
+      return this.prisma.ruleDocumentAttachment.create({
+        data: {
+          documentId,
+          source: 'UPLOAD',
+          title: (dto.title || dto.fileName || 'Document').trim().slice(0, 300),
+          fileName: dto.fileName?.slice(0, 300) ?? null,
+          mimeType: parsed.mime,
+          fileDataUrl: dto.dataUrl,
+          extractedText: text + (note ? `\n\n[${note}]` : ''),
+          sortIdx,
+        },
+      });
+    }
+    const url = (dto.url ?? '').trim();
+    if (!/^https?:\/\//i.test(url)) throw new BadRequestException('enter a valid http(s) link');
+    const got = await fetchAndExtract(url).catch(() => null);
+    return this.prisma.ruleDocumentAttachment.create({
+      data: {
+        documentId,
+        source: 'LINK',
+        title: (dto.title || url).trim().slice(0, 300),
+        sourceUrl: url,
+        mimeType: got?.mime ?? null,
+        extractedText: got ? got.text + (got.note ? `\n\n[${got.note}]` : '') : '',
+        sortIdx,
+      },
+    });
+  }
+
+  /** §27 — probe a link while composing: can we fetch + read it? Returns a short preview. */
+  async probeLink(url: string) {
+    const u = (url || '').trim();
+    if (!/^https?:\/\//i.test(u)) throw new BadRequestException('enter a valid http(s) link');
+    try {
+      const { text, note, mime } = await fetchAndExtract(u);
+      return { ok: true, chars: text.length, mime, note: note ?? null, preview: text.slice(0, 2000) };
+    } catch (e) {
+      return { ok: false, chars: 0, mime: null, note: e instanceof Error ? e.message : 'could not read the link', preview: '' };
+    }
+  }
+
+  /** §27 — fetch a link's full extracted text so the author can insert it into the document body. */
+  async fetchLinkText(url: string) {
+    const u = (url || '').trim();
+    if (!/^https?:\/\//i.test(u)) throw new BadRequestException('enter a valid http(s) link');
+    const { text } = await fetchAndExtract(u);
+    return { text, chars: text.length };
+  }
+
+  /** The document + the caller's right to edit it (owner, or board when docEditableBy allows). Edits
+   *  are only possible while PRIVATE/DRAFT and no vote is live. Used by update + attachment ops. */
+  private async editableDoc(userId: string, id: string) {
+    const doc = await this.prisma.ruleDocument.findUnique({ where: { id } });
+    if (!doc) throw new NotFoundException('rule document not found');
+    const mayEdit = doc.ownerUserId === userId || (doc.docEditableBy === 'PROPOSER_BOARD' && (await this.board.isBoardMember(userId)));
+    if (!mayEdit) throw new ForbiddenException('you cannot edit this document');
+    if (doc.status !== 'PRIVATE' && doc.status !== 'DRAFT') throw new BadRequestException('this document can no longer be edited');
+    if (doc.status === 'DRAFT' && (await this.hasLiveVote(id))) throw new BadRequestException('a vote is in progress — the document is locked');
+    return doc;
+  }
+
+  async addAttachment(userId: string, id: string, dto: RuleAttachmentInput) {
+    await this.editableDoc(userId, id);
+    const count = await this.prisma.ruleDocumentAttachment.count({ where: { documentId: id } });
+    await this.ingestAttachment(id, dto, count);
+    return this.getOne(id, userId);
+  }
+
+  async removeAttachment(userId: string, id: string, attachmentId: string) {
+    await this.editableDoc(userId, id);
+    const att = await this.prisma.ruleDocumentAttachment.findUnique({ where: { id: attachmentId } });
+    if (!att || att.documentId !== id) throw new NotFoundException('attachment not found');
+    await this.prisma.ruleDocumentAttachment.delete({ where: { id: attachmentId } });
+    return this.getOne(id, userId);
+  }
+
+  async renameAttachment(userId: string, id: string, attachmentId: string, title: string) {
+    await this.editableDoc(userId, id);
+    const att = await this.prisma.ruleDocumentAttachment.findUnique({ where: { id: attachmentId } });
+    if (!att || att.documentId !== id) throw new NotFoundException('attachment not found');
+    await this.prisma.ruleDocumentAttachment.update({ where: { id: attachmentId }, data: { title: title.trim().slice(0, 300) } });
+    return this.getOne(id, userId);
+  }
+
+  /** Download an uploaded attachment's original file. PRIVATE docs' files are owner-only. */
+  async getAttachmentFile(id: string, attachmentId: string, viewerUserId: string | null) {
+    const doc = await this.prisma.ruleDocument.findUnique({ where: { id }, select: { status: true, ownerUserId: true } });
+    if (!doc) throw new NotFoundException('file not found');
+    if (doc.status === 'PRIVATE' && doc.ownerUserId !== viewerUserId) throw new ForbiddenException('this document is private');
+    const att = await this.prisma.ruleDocumentAttachment.findUnique({ where: { id: attachmentId } });
+    if (!att || att.documentId !== id || !att.fileDataUrl) throw new NotFoundException('file not found');
+    return { fileName: att.fileName, mimeType: att.mimeType, dataUrl: att.fileDataUrl };
   }
 
   private async ownEditable(id: string, userId: string) {
@@ -184,14 +320,18 @@ export class RuleDocumentsService {
     return doc;
   }
 
-  async update(userId: string, id: string, dto: { title?: string; contentMd?: string; expiresAt?: string | null }) {
-    const doc = await this.ownEditable(id, userId);
-    if (doc.status !== 'PRIVATE' && doc.status !== 'DRAFT') throw new BadRequestException('this document can no longer be edited');
-    if (doc.status === 'DRAFT' && (await this.hasLiveVote(id))) throw new BadRequestException('a vote is in progress — the document is locked');
+  async update(userId: string, id: string, dto: { title?: string; contentMd?: string; expiresAt?: string | null; commentAudience?: string; docEditableBy?: string }) {
+    const doc = await this.editableDoc(userId, id);
     const nextExp = this.nextExpiry(doc.expiresAt, dto.expiresAt);
     await this.prisma.ruleDocument.update({
       where: { id },
-      data: { title: dto.title?.trim() ?? doc.title, contentMd: dto.contentMd ?? doc.contentMd, ...(nextExp !== undefined ? { expiresAt: nextExp } : {}) },
+      data: {
+        title: dto.title?.trim() ?? doc.title,
+        contentMd: dto.contentMd ?? doc.contentMd,
+        ...(nextExp !== undefined ? { expiresAt: nextExp } : {}),
+        ...(dto.commentAudience !== undefined ? { commentAudience: dto.commentAudience } : {}),
+        ...(dto.docEditableBy !== undefined ? { docEditableBy: dto.docEditableBy } : {}),
+      },
     });
     return this.getOne(id, userId);
   }
@@ -255,10 +395,11 @@ export class RuleDocumentsService {
   }
 
   async addComment(userId: string, id: string, dto: { contentMd: string; parentId?: string }) {
-    if (!(await this.admittedDrep(userId))) throw new ForbiddenException('you must be a Council member to comment — join the Council first (it is free)');
-    const doc = await this.prisma.ruleDocument.findUnique({ where: { id }, select: { status: true } });
+    const doc = await this.prisma.ruleDocument.findUnique({ where: { id }, select: { status: true, commentAudience: true } });
     if (!doc) throw new NotFoundException('rule document not found');
     if (doc.status === 'PRIVATE' || doc.status === 'DELETED') throw new BadRequestException('this document is not open for feedback');
+    // §27 — the author chose who may comment (board / members / everyone); enforce it here.
+    if (!(await canCommentWith(this.prisma, userId, doc.commentAudience))) throw new ForbiddenException('you are not allowed to comment on this document');
     let parentId: string | null = null;
     if (dto.parentId) {
       const parent = await this.prisma.ruleDocumentComment.findUnique({ where: { id: dto.parentId }, select: { documentId: true, parentId: true } });

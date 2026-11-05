@@ -20,7 +20,7 @@ export default function AdminLoginPage() {
   }, [loading, admin, router]);
 
   const field =
-    'w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-amber-500';
+    'w-full rounded-md border border-neutral-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-neutral-900 dark:text-slate-100 outline-none focus:border-amber-500';
 
   const submitPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +54,7 @@ export default function AdminLoginPage() {
   return (
     <div className="mx-auto max-w-sm">
       <h1 className="text-xl font-bold">Platform Admin</h1>
-      <p className="mt-1 text-sm text-slate-400">Sign in with username + password.</p>
+      <p className="mt-1 text-sm text-neutral-500 dark:text-slate-400">Sign in with username + password.</p>
 
       {pendingToken === null ? (
         <form onSubmit={submitPassword} className="mt-6 space-y-3">
@@ -81,7 +81,7 @@ export default function AdminLoginPage() {
               type="button"
               onClick={() => setShowPw((v) => !v)}
               title={showPw ? 'Hide password' : 'Show password'}
-              className="absolute inset-y-0 right-2 flex items-center text-slate-500 hover:text-slate-300"
+              className="absolute inset-y-0 right-2 flex items-center text-neutral-400 dark:text-slate-500 hover:text-neutral-700 dark:text-slate-300"
             >
               {showPw ? '🙈' : '👁'}
             </button>
@@ -97,7 +97,7 @@ export default function AdminLoginPage() {
         </form>
       ) : (
         <form onSubmit={submit2fa} className="mt-6 space-y-3">
-          <p className="text-sm text-slate-400">Enter the 6-digit code from your authenticator.</p>
+          <p className="text-sm text-neutral-500 dark:text-slate-400">Enter the 6-digit code from your authenticator.</p>
           <input
             className={field}
             inputMode="numeric"

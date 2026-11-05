@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Role, DRepStatus } from '@drep-dao/shared';
-import { drepIdFromKeyHashHex } from '@drep-dao/cardano';
+import { drepIdFromKeyHashHex, drepKeyHashFromPubKeyHex } from '@drep-dao/cardano';
 import { PrismaService } from '../prisma/prisma.service';
 import { CardanoQueryService } from '../cardano/cardano-query.service';
 import { isProvenDrepRequired } from '../auth/drep-link.service';
@@ -18,7 +18,7 @@ export interface UserProfile {
   submitterName: string | null;
   roles: Role[];
   /** On-chain DRep identity — the source of truth for the DREP role (§22.4). */
-  onchainDrep: { registered: boolean; drepId: string | null; proven?: boolean };
+  onchainDrep: { registered: boolean; drepId: string | null; proven?: boolean; proofRequired?: boolean };
   /** DAO membership (admission) status — separate from on-chain registration. */
   daoMembership: { status: string; admittedAt: Date | null } | null;
 }
@@ -97,7 +97,8 @@ export class UsersService {
     }
   }
 
-  /** Is this CIP-95 DRep key a registered + active on-chain DRep? undefined if unknown. */
+  /** Is this CIP-95 DRep key a registered on-chain DRep (live registration, even if its activity
+   *  window has lapsed)? A registered-but-inactive DRep is still a DRep. undefined if unknown. */
   private async checkOnchainRegistration(drepKeyHash: string): Promise<boolean | undefined> {
     try {
       const drepId = drepIdFromKeyHashHex(drepKeyHash);
@@ -106,6 +107,17 @@ export class UsersService {
     } catch (e) {
       this.logger.warn(`on-chain DRep check failed for ${drepKeyHash}: ${e instanceof Error ? e.message : e}`);
       return undefined;
+    }
+  }
+
+  /** §SEC-01 — is the wallet's CIP-95 DRep public key a REGISTERED on-chain DRep? Used by the UI to
+   *  decide whether to show the "Verify DRep key" proof prompt at all: CIP-95 wallets derive a DRep
+   *  key for EVERY account, so a plain ADA holder (non-DRep) must not be nagged to prove one. */
+  async isClaimedDrepRegistered(drepKeyHex: string): Promise<boolean> {
+    try {
+      return (await this.checkOnchainRegistration(drepKeyHashFromPubKeyHex(drepKeyHex))) === true;
+    } catch {
+      return false;
     }
   }
 
@@ -230,6 +242,9 @@ export class UsersService {
         registered: isRegisteredDRep,
         drepId: user.drepKeyHash ? safeDrepId(user.drepKeyHash) : null,
         proven: !!user.drepKeyProvenAt,
+        // §SEC-01 — whether a cryptographic DRep-key proof is REQUIRED. When false (auto-detect
+        // mode) the "Verify DRep key" button/popup is hidden — the DRep is already recognised.
+        proofRequired: isProvenDrepRequired(this.config),
       },
       daoMembership: drep ? { status: drep.status, admittedAt: drep.admittedAt } : null,
     };
