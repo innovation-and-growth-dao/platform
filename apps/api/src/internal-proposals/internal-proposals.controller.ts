@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
+import { BoardGuard } from '../auth/board.guard';
 import { CurrentUser, AuthContext } from '../auth/current-user.decorator';
 import { InternalProposalsService } from './internal-proposals.service';
 import { CreateInternalProposalDto, SaveDraftDto, VoteInternalDto, SaveDocumentDto, AddAttachmentDto, RenameAttachmentDto, OpenVotingDto, ProbeLinkDto } from './dto';
@@ -62,7 +63,10 @@ export class InternalProposalsController {
     return this.internal.vote(c.userId, id, dto);
   }
 
+  // §10 — manual conclude is board-only (defense-in-depth); the service also refuses while voting is
+  // open, and conclusion happens automatically at the deadline via maybeFinalize on reads/votes.
   @Post(':id/finalize')
+  @UseGuards(JwtAuthGuard, BoardGuard)
   finalize(@Param('id', ParseUUIDPipe) id: string) {
     return this.internal.finalize(id);
   }

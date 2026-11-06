@@ -442,7 +442,8 @@ export class DrepService {
       motivation: dto.motivation?.trim() || null,
       email,
       telegram,
-      socialLinks: (dto.socialLinks ?? []).map((s) => s.trim()).filter(Boolean),
+      // SEC (stored XSS): only keep http(s)/mailto links so a stored value can't become a javascript: href.
+      socialLinks: (dto.socialLinks ?? []).map((s) => s.trim()).filter((s) => /^(https?:\/\/|mailto:)/i.test(s)),
       logoDataUrl: dto.logoDataUrl?.trim() || null,
       subcategoryIds: dto.subcategoryIds ?? [],
       // §2 — an already-approved Expert may edit their profile WITHOUT losing

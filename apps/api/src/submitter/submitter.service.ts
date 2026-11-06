@@ -58,7 +58,8 @@ export class SubmitterService {
     const email = (dto.email ?? '').trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('a valid email is required');
     const previousFunding = (dto.previousFunding ?? '').trim();
-    const socialLinks = (dto.socialLinks ?? []).map((s) => s.trim()).filter(Boolean);
+    // SEC (stored XSS): only keep http(s)/mailto links so a stored value can't become a javascript: href.
+    const socialLinks = (dto.socialLinks ?? []).map((s) => s.trim()).filter((s) => /^(https?:\/\/|mailto:)/i.test(s));
     const githubUrls = (dto.githubUrls ?? []).map((s) => s.trim()).filter(Boolean);
     const logoDataUrl = dto.logoDataUrl?.trim() || null;
     const existing = await this.prisma.submitterApplication.findUnique({ where: { userId } });

@@ -1871,13 +1871,14 @@ export class ProposalsService {
     return {
       contentFingerprint,
       ...this.summary(p),
-      // §2 — submitter identity + contact so a reader can reach them from the proposal (same data
-      // the public submitters directory already shows).
+      // §2 — submitter identity + contact. Contact details (email/Telegram/socials) are shown only to
+      // AUTHENTICATED viewers, matching the login-gated submitters directory; anonymous callers
+      // (proposal detail is OptionalJwtAuthGuard) get name + avatar only, never contact PII.
       submitterUserId: p.submitterUserId,
       submitterAvatar: subApp?.logoDataUrl ?? null,
-      submitterEmail: subApp?.email || null,
-      submitterTelegram: subApp?.telegram || null,
-      submitterSocialLinks: subApp?.socialLinks ?? [],
+      submitterEmail: viewerUserId ? subApp?.email || null : null,
+      submitterTelegram: viewerUserId ? subApp?.telegram || null : null,
+      submitterSocialLinks: viewerUserId ? subApp?.socialLinks ?? [] : [],
       milestoneBar,
       categoryId: p.categoryId,
       contentMd: p.contentMd,

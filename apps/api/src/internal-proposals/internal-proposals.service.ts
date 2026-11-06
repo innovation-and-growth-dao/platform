@@ -1239,6 +1239,12 @@ export class InternalProposalsService {
     if (proposal.status !== ProposalStatus.ACTIVE) {
       return { id: proposalId, publicId: proposal.publicId, status: proposal.status, tally: await this.tally(proposalId) };
     }
+    // SEC — a vote may only conclude AFTER its deadline. maybeFinalize() (the sole legitimate caller
+    // of the ACTIVE path) only invokes finalize() once votingEndAt has passed; guard here too so the
+    // public finalize route cannot end an ACTIVE vote early and force/anchor a premature outcome.
+    if (proposal.votingEndAt && proposal.votingEndAt.getTime() > Date.now()) {
+      throw new ForbiddenException('voting is still open — the result is concluded automatically at the deadline');
+    }
     const t = await this.tally(proposalId);
     // A poll has no pass/fail — it concludes (APPROVED). Threshold proposals pass iff §4.4 met.
     const approved = t.kind === 'POLL' ? true : t.approved;

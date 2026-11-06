@@ -1,4 +1,5 @@
 'use client';
+import { safeHref } from '@/lib/safe-url';
 
 import { useEffect, useState } from 'react';
 import { daoApi, type DaoExpert } from '@/lib/api';
@@ -121,7 +122,7 @@ export function ExpertsDirectory() {
                       <div className="mt-0.5 text-xs">
                         {x.socialLinks.length
                           ? x.socialLinks.map((l, i) => (
-                              <a key={i} href={l} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
+                              <a key={i} href={safeHref(l)} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
                             ))
                           : <span className="text-neutral-400">{t('not provided')}</span>}
                       </div>

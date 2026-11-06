@@ -1,4 +1,5 @@
 'use client';
+import { safeHref } from '@/lib/safe-url';
 
 import { useEffect, useState } from 'react';
 import { submitterApi, daoApi, boardSubmittersApi, type ApprovedSubmitter, type SubmitterPortfolio, type DaoMember } from '@/lib/api';
@@ -146,7 +147,7 @@ export function SubmittersDirectory() {
                           <span className="font-medium">{t('GitHub:')}</span>{' '}
                           {s.githubUrls.length
                             ? s.githubUrls.map((l, i) => (
-                                <a key={i} href={l} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
+                                <a key={i} href={safeHref(l)} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
                               ))
                             : <span className="text-neutral-400">{t('not provided')}</span>}
                         </div>
@@ -154,7 +155,7 @@ export function SubmittersDirectory() {
                           <span className="font-medium">{t('Social media:')}</span>{' '}
                           {s.socialLinks.length
                             ? s.socialLinks.map((l, i) => (
-                                <a key={i} href={l} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
+                                <a key={i} href={safeHref(l)} target="_blank" rel="noreferrer" className="mr-2 break-all text-emerald-700 underline dark:text-emerald-400">{l}</a>
                               ))
                             : <span className="text-neutral-400">{t('not provided')}</span>}
                         </div>
